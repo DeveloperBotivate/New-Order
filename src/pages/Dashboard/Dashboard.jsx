@@ -120,9 +120,10 @@ export default function Dashboard() {
       totalOrders: filteredOrders.length,
       totalPOValue: 0,
       
-      // Validation
+      // Validation & Check For Delivery
       pendingValidation: 0,
       validated: 0,
+      pendingCheckForDelivery: 0,
 
       // Production
       pendingProduction: 0,
@@ -155,11 +156,15 @@ export default function Dashboard() {
       s.totalPOValue += parseFloat(order.totalPOValue) || 0;
       s.totalAdvanceRequired += parseFloat(order.advanceAmount) || 0;
 
-      if (!order.isChecked) s.pendingValidation++;
-      else s.validated++;
-
       // Delivery history for this order
       const orderDeliv = deliveryHistory.filter(h => h.orderId === order.orderId);
+
+      if (!order.isChecked) {
+        s.pendingValidation++;
+      } else {
+        s.validated++;
+        if (orderDeliv.length === 0) s.pendingCheckForDelivery++;
+      }
       
       // Production
       orderDeliv.forEach(deliv => {
@@ -221,7 +226,7 @@ export default function Dashboard() {
       if (p.paymentType === 'Freight') s.totalFreightPaid += amt;
     });
 
-    agencyHistory.forEach(a => {
+    logisticHistory.forEach(a => {
       if (!filteredOrderIds.has(a.orderId)) return;
       s.totalFreightExpected += parseFloat(a.transporterAmount) || 0;
     });
@@ -328,64 +333,153 @@ export default function Dashboard() {
         <StatTile icon={Banknote} label="Pending Payments" value={inr(totalPendingPayments)} tone="red" subtitle="Advance + Vendor + Freight" />
       </div>
 
-      {/* Module Grid */}
-      <h2 className="text-sm font-black text-gray-800 uppercase tracking-wider mt-6 mb-2 border-b border-gray-200 pb-2">Module Summaries</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        
-        <SectionCard title="Order Intake & Validation" icon={ShieldCheck}>
-          <MiniStat label="Total Received" value={stats.totalOrders} color="indigo" />
-          <MiniStat label="Validated" value={stats.validated} color="emerald" />
-          <MiniStat label="Pending Validation" value={stats.pendingValidation} color="amber" />
-        </SectionCard>
+      {/* Order Pipeline Breakdown */}
+      <h2 className="text-sm font-black text-gray-800 uppercase tracking-wider mt-6 mb-2 border-b border-gray-200 pb-2">Order Pipeline Breakdown (Pending Items)</h2>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-6">
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Received Order</span>
+              <span className="text-sm font-black text-indigo-600">{stats.totalOrders}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-indigo-500 h-1.5 rounded-full" style={{width: `100%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Check & Validation</span>
+              <span className="text-sm font-black text-amber-600">{stats.pendingValidation}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingValidation / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Check For Delivery</span>
+              <span className="text-sm font-black text-amber-600">{stats.pendingCheckForDelivery}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingCheckForDelivery / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Production Planning</span>
+              <span className="text-sm font-black text-amber-600">{stats.pendingProduction}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingProduction / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Dispatch Planning</span>
+              <span className="text-sm font-black text-amber-600">{stats.pendingDispatch}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingDispatch / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Packaging</span>
+              <span className="text-sm font-black text-amber-600">{stats.pendingPackaging}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingPackaging / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Vehicle Logistic</span>
+              <span className="text-sm font-black text-amber-600">{Math.max(0, stats.totalOrders - stats.logisticsAssigned)}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (Math.max(0, stats.totalOrders - stats.logisticsAssigned) / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Make Callan</span>
+              <span className="text-sm font-black text-amber-600">{Math.max(0, stats.totalOrders - stats.callansGenerated)}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (Math.max(0, stats.totalOrders - stats.callansGenerated) / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Make Invoice</span>
+              <span className="text-sm font-black text-amber-600">{Math.max(0, stats.totalOrders - stats.invoicesGenerated)}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (Math.max(0, stats.totalOrders - stats.invoicesGenerated) / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Confirm Delivery</span>
+              <span className="text-sm font-black text-amber-600">{Math.max(0, stats.totalOrders - stats.delivered)}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (Math.max(0, stats.totalOrders - stats.delivered) / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
+          </div>
+          <div className="flex flex-col space-y-1 md:col-span-2 lg:col-span-1">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Payments</span>
+              <span className="text-sm font-black text-red-600">{inr(totalPendingPayments)}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-red-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (totalPendingPayments / ((stats.totalPOValue + stats.totalFreightExpected) || 1)) * 100)}%`}}></div></div>
+          </div>
+        </div>
+      </div>
 
-        <SectionCard title="Production Planning" icon={Factory}>
-          <MiniStat label="Pending Production" value={stats.pendingProduction} color="amber" />
-          <MiniStat label="Produced (Ready)" value={stats.produced} color="emerald" />
-        </SectionCard>
-
-        <SectionCard title="Dispatch & Packaging" icon={Package}>
-          <MiniStat label="Pending Dispatch" value={stats.pendingDispatch} color="amber" />
-          <MiniStat label="Total Dispatched" value={stats.dispatched} color="indigo" />
-          <MiniStat label="Pending Packaging" value={stats.pendingPackaging} color="amber" />
-          <MiniStat label="Total Packaged" value={stats.packaged} color="emerald" />
-        </SectionCard>
-
-        <SectionCard title="Logistics & Callan" icon={Truck}>
-          <MiniStat label="Vehicles Assigned" value={stats.logisticsAssigned} color="indigo" />
-          <MiniStat label="Callans Generated" value={stats.callansGenerated} color="emerald" />
-        </SectionCard>
-
-        <SectionCard title="Invoice & Delivery" icon={Receipt}>
-          <MiniStat label="Invoices Generated" value={stats.invoicesGenerated} color="indigo" />
-          <MiniStat label="Confirmed Delivered" value={stats.delivered} color="emerald" />
-        </SectionCard>
-
-        <SectionCard title="Payments Hub" icon={Banknote} className="md:col-span-2 xl:col-span-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full content-center">
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Advance Payments</p>
-              <div className="flex justify-between items-end mb-1">
+      {/* Payments Hub */}
+      <h2 className="text-sm font-black text-gray-800 uppercase tracking-wider mt-6 mb-2 border-b border-gray-200 pb-2">Payments Breakdown</h2>
+      <div className="mb-6">
+        <SectionCard title="Payments Hub" icon={Banknote} className="w-full">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full content-start pt-2">
+            
+            <div className="flex flex-col space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Advance Payments</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex justify-between items-center bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                  <span className="text-gray-500 font-medium">Total:</span>
+                  <span className="font-bold text-gray-700">{inr(stats.totalAdvanceRequired)}</span>
+                </div>
+                <div className="flex justify-between items-center bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                  <span className="text-gray-500 font-medium">Paid:</span>
+                  <span className="font-bold text-emerald-600">{inr(stats.totalAdvancePaid)}</span>
+                </div>
+              </div>
+              <div className="flex justify-between items-end pt-1">
                 <span className="text-xs text-gray-600 font-medium">Pending:</span>
                 <span className="text-sm font-black text-amber-600">{inr(pendingAdvance)}</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.totalAdvancePaid / (stats.totalAdvanceRequired || 1)) * 100)}%`}}></div></div>
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Vendor Payments</p>
-              <div className="flex justify-between items-end mb-1">
+
+            <div className="flex flex-col space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Vendor Payments</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex justify-between items-center bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                  <span className="text-gray-500 font-medium">Total:</span>
+                  <span className="font-bold text-gray-700">{inr(stats.totalPOValue)}</span>
+                </div>
+                <div className="flex justify-between items-center bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                  <span className="text-gray-500 font-medium">Paid:</span>
+                  <span className="font-bold text-emerald-600">{inr(stats.totalVendorPaid + stats.totalAdvancePaid)}</span>
+                </div>
+              </div>
+              <div className="flex justify-between items-end pt-1">
                 <span className="text-xs text-gray-600 font-medium">Pending:</span>
                 <span className="text-sm font-black text-red-600">{inr(pendingVendor)}</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-red-500 h-1.5 rounded-full" style={{width: `${Math.min(100, ((stats.totalVendorPaid + stats.totalAdvancePaid) / (stats.totalPOValue || 1)) * 100)}%`}}></div></div>
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Freight Payments</p>
-              <div className="flex justify-between items-end mb-1">
+
+            <div className="flex flex-col space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Freight Payments</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex justify-between items-center bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                  <span className="text-gray-500 font-medium">Total:</span>
+                  <span className="font-bold text-gray-700">{inr(stats.totalFreightExpected)}</span>
+                </div>
+                <div className="flex justify-between items-center bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                  <span className="text-gray-500 font-medium">Paid:</span>
+                  <span className="font-bold text-emerald-600">{inr(stats.totalFreightPaid)}</span>
+                </div>
+              </div>
+              <div className="flex justify-between items-end pt-1">
                 <span className="text-xs text-gray-600 font-medium">Pending:</span>
                 <span className="text-sm font-black text-indigo-600">{inr(pendingFreight)}</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-indigo-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.totalFreightPaid / (stats.totalFreightExpected || 1)) * 100)}%`}}></div></div>
             </div>
+
           </div>
         </SectionCard>
       </div>
