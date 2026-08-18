@@ -62,16 +62,16 @@ const Login = () => {
         <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 space-y-6">
           
           {/* Logo Section */}
-          <div className="flex flex-col items-center space-y-6">
-            <div className="w-28 h-28 rounded-full border-4 border-sky-400 flex items-center justify-center shadow-lg bg-transparent">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="w-40 flex items-center justify-center">
               <img
                 src={botivateLogoB}
-                alt="Botivate Logo"
-                className="w-24 h-24 object-contain"
+                alt="NuTech Logo"
+                className="w-full h-auto object-contain"
               />
             </div>
             <div className="text-center space-y-2">
-              <h1 className="text-4xl font-bold text-gray-900">Store</h1>
+              <h1 className="text-4xl font-bold text-gray-900">OrderNutech</h1>
               <p className="text-gray-600 text-base font-medium">Management System</p>
             </div>
           </div>

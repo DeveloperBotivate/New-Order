@@ -40,14 +40,18 @@ const DataTable = ({
           <table className={`w-full relative border-collapse ${minWidth}`}>
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
               <tr>
-                {headers.map((header, index) => (
-                  <th 
-                    key={index} 
-                    className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap uppercase tracking-wider"
-                  >
-                    {header}
-                  </th>
-                ))}
+                {headers.map((header, index) => {
+                  const label = typeof header === 'object' ? header.label : header;
+                  const className = typeof header === 'object' && header.className ? header.className : '';
+                  return (
+                    <th 
+                      key={index} 
+                      className={`px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap uppercase tracking-wider ${className}`}
+                    >
+                      {label}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">

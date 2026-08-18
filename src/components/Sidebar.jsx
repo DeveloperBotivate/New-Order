@@ -34,147 +34,153 @@ import {
   Warehouse,
   Coins,
   Receipt,
-  Blocks
+  Blocks,
+  PackageCheck,
+  MapPin,
+  LayoutDashboard
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { getIndents, getLiftingRecords, getStoreInRecords, getPOs, getDirectStoreInRecords, getPayments, getRejectGRNRecords, getDebitNotes, getTallyEntries, getBillNotReceived, getQuotationHistory } from '../utils/storageManager';
+import { getIndents, getReceivedOrders, getDeliveryHistory, getDispatchHistory, getPackagingHistory, getLogisticHistory, getCallanHistory, getInvoiceHistory, getConfirmDeliveryHistory } from '../utils/storageManager';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const [isMastersOpen, setIsMastersOpen] = useState(false);
-  const [isAuditOpen, setIsAuditOpen] = useState(false);
-  const [isStoreDataOpen, setIsStoreDataOpen] = useState(false);
   const [counts, setCounts] = useState({ 
-    approval: 0, 
-    vendorRate: 0, 
-    technical: 0, 
-    management: 0, 
-
-    poToBeCreate: 0, 
-    lifting: 0, 
-    storeIn: 0,
-    hodCheck: 0,
-    freightPayment: 0,
-    makePayment: 0,
-    rejectGRN: 0,
-    sendDebit: 0,
-    totalAudit: 0,
-    audit: 0,
-    rectify: 0,
-    reaudit: 0,
-    tally: 0,
-    again: 0,
-    billNotReceived: 0,
-    enquiry: 0
+    management: 0,
+    checkValidation: 0,
+    checkDelivery: 0,
+    dispatch: 0,
+    packaging: 0,
+    logistic: 0,
+    callan: 0,
+    invoice: 0,
+    confirmDelivery: 0
   });
 
   useEffect(() => {
     const refreshCounts = () => {
       const indents = getIndents() || [];
-      const lifting = getLiftingRecords() || [];
-      const pos = getPOs() || [];
 
       // Flatten indents for multi-item modules
       const flattenedItems = indents.flatMap(indent => 
         (indent.items || []).map(item => ({ ...indent, ...item }))
       );
 
-      // 1. Approval Indent: approvalStatus === 'PENDING'
-      const approvalCount = flattenedItems.filter(i => i.approvalStatus === 'PENDING').length;
-
-      // 2. Vendor Rate: status === 'Rate Update'
-      const vendorRateCount = indents.filter(i => i.status === 'Rate Update').length;
-
-      // Enquiry: APPROVED items with no quotation history
-      const quotationHistory = getQuotationHistory() || [];
-      const enquiryCount = flattenedItems.filter(item => {
-        const isApproved = item.approvalStatus === 'APPROVED';
-        const alreadyHasEnquiry = quotationHistory.some(h => h.indentNo === (item.id || item.indentId) && h.product === item.productName);
-        return isApproved && !alreadyHasEnquiry;
-      }).length;
-
-      // 3. Technical Approval: vendorRateInfo && !technicalApproval
-      const technicalCount = flattenedItems.filter(i => i.vendorRateInfo && !i.technicalApproval).length;
-
       // 4. Management Approval: technicalApproval && !managementApproval
       const managementCount = flattenedItems.filter(i => i.technicalApproval && !i.managementApproval).length;
 
-      // 5. PO to be Create: managementApproval && !poNumber
-      const poToBeCreateCount = flattenedItems.filter(i => i.managementApproval && !i.poNumber).length;
+      // 5. Check and Validation: received orders where !isChecked
+      const receivedOrders = getReceivedOrders() || [];
+      const checkValidationCount = receivedOrders.filter(o => !o.isChecked).length;
 
-      // 6. Lifting: Matches Lifting.jsx (pos.length)
-      const liftingCount = pos.length;
+      // 6. Check for Delivery: valid orders where pendingQty > 0 and no 'No Stock' status
+      const deliveryHistory = getDeliveryHistory() || [];
+      const checkDeliveryCount = receivedOrders.filter(order => {
+        if (!order.isChecked) return false;
+        return order.items?.some((item, idx) => {
+          const productNumber = `${order.orderId}-${String(idx + 1).padStart(2, '0')}`;
+          const historyForProduct = deliveryHistory.filter(h => h.orderId === order.orderId && h.productNumber === productNumber);
+          
+          const hasNoStock = historyForProduct.some(h => h.stockStatus === 'No Stock');
+          if (hasNoStock) return false;
+          
+          const totalApproved = historyForProduct.reduce((sum, h) => sum + (parseFloat(h.approveQty) || 0), 0);
+          const totalQty = parseFloat(item.qty) || 0;
+          return totalQty - totalApproved > 0;
+        });
+      }).length;
 
-      // 7. Store In: Matches StoreIn.jsx (lifting.length)
-      const storeInCount = lifting.length;
+      // 7. Dispatch Planning: orders with 'In Stock' deliveries not yet fully dispatched
+      // (a delivery can be dispatched across multiple PARTIAL transactions, so this is
+      // judged by remaining quantity, not by whether any dispatch record merely exists)
+      const dispatchHistory = getDispatchHistory() || [];
+      const dispatchCount = receivedOrders.filter(order => {
+        const orderDeliveries = deliveryHistory.filter(d => d.orderId === order.orderId && d.stockStatus === 'In Stock');
+        if (orderDeliveries.length === 0) return false;
+        return orderDeliveries.some(delivery => {
+          const availableQty = parseFloat(delivery.approveQty) || parseFloat(delivery.qty) || 0;
+          const dispatchedQty = dispatchHistory
+            .filter(dh => dh.deliveryApproverId === delivery.deliveryApproverId)
+            .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0), 0);
+          return (availableQty - dispatchedQty) > 0;
+        });
+      }).length;
 
-      // 8. HOD Check: storeIn records with no hodStatus or 'Pending'
-      const storeInRecords = getStoreInRecords() || [];
-      const hodCheckCount = storeInRecords.filter(i => !i.hodStatus || i.hodStatus === 'Pending').length;
+      // 8. Packaging Planning: orders with dispatched items not yet fully packaged (Packaging = Yes).
+      // Matched by dispatchId — each dispatch transaction (including partial ones) is
+      // packaged independently.
+      const packagingHistory = getPackagingHistory() || [];
+      const packagingCount = receivedOrders.filter(order => {
+        const orderDispatches = dispatchHistory.filter(d => d.orderId === order.orderId);
+        if (orderDispatches.length === 0) return false;
+        return orderDispatches.some(dispatchItem => {
+          return !packagingHistory.some(ph => ph.dispatchId === dispatchItem.dispatchId && ph.packagingStatus === 'Yes');
+        });
+      }).length;
 
-      // 9. Freight Payment: lifting records with transportation === 'Yes' and no payment
-      const freightPaymentCount = lifting.filter(i => i.transportation === 'Yes' && (!i.freightPaymentStatus || i.freightPaymentStatus === 'Pending')).length;
+      // 9. Vehicle Logistic: orders with packaged items not yet in logistic history.
+      // Plain 'Ex Factory' orders skip Vehicle Logistic entirely (buyer arranges pickup).
+      const logisticHistory = getLogisticHistory() || [];
+      const logisticCount = receivedOrders.filter(order => {
+        if (!['FOR', 'Ex Factory Transpoter Office'].includes(order.transportingType)) return false;
+        const orderPackaged = packagingHistory.filter(ph => ph.orderId === order.orderId && ph.packagingStatus === 'Yes');
+        if (orderPackaged.length === 0) return false;
+        return orderPackaged.some(packageItem => {
+          return !logisticHistory.some(lh => lh.dispatchId === packageItem.dispatchId);
+        });
+      }).length;
 
-      // 10. Make Payment
-      const directStoreIn = getDirectStoreInRecords() || [];
-      const payments = getPayments() || [];
-      const approvedStoreIn = storeInRecords.filter(r => r.hodStatus === 'Approved');
-      
-      let makePaymentCount = 0;
-      const checkPaymentPending = (id, amount) => {
-        const related = payments.filter(p => p.referenceId === id);
-        const total = related.reduce((sum, p) => sum + (parseFloat(p.paidAmount) || 0), 0);
-        if (total < amount) makePaymentCount++;
-      };
-      
-      approvedStoreIn.forEach(r => checkPaymentPending(r.id, r.totalAmount || r.items?.[0]?.amount || 0));
-      directStoreIn.forEach(r => checkPaymentPending(r.id, parseFloat(r.billAmount) || 0));
+      // 10. Make Callan: orders that are ready for Callan (i.e. in Vehicle Logistic history)
+      // but not yet in Callan history
+      const callanHistory = getCallanHistory() || [];
+      const callanCount = receivedOrders.filter(order => {
+        const orderPackaged = packagingHistory.filter(ph => ph.orderId === order.orderId && ph.packagingStatus === 'Yes');
+        if (orderPackaged.length === 0) return false;
 
-      // 11. Reject GRN
-      const grnRecords = getRejectGRNRecords() || [];
-      const rejectedStoreIn = storeInRecords.filter(r => r.hodStatus === 'Rejected');
-      const rejectGRNCount = rejectedStoreIn.filter(r => !grnRecords.some(g => g.referenceId === r.id)).length;
+        const orderLogistic = logisticHistory.filter(lh => lh.orderId === order.orderId);
 
-      // 12. Send Debit Note
-      const allDebitNotes = getDebitNotes() || [];
-      const sendDebitCount = lifting.filter(lift => !allDebitNotes.some(dn => dn.liftNumber === lift.id)).length;
+        return orderPackaged.some(packageItem => {
+          const readyForCallan = orderLogistic.some(lh => lh.dispatchId === packageItem.dispatchId);
+          const notInCallan = !callanHistory.some(ch => ch.dispatchId === packageItem.dispatchId);
+          return readyForCallan && notInCallan;
+        });
+      }).length;
 
-      // 13. Audit Data stages
-      const tallyEntries = getTallyEntries() || [];
-      const activeTally = tallyEntries.filter(t => !t.isCompleted);
-      const auditCount = activeTally.filter(t => t.currentStage === 'AUDIT').length;
-      const rectifyCount = activeTally.filter(t => t.currentStage === 'RECTIFY').length;
-      const reauditCount = activeTally.filter(t => t.currentStage === 'REAUDIT').length;
-      const tallyCount = activeTally.filter(t => t.currentStage === 'TALLY_ENTRY').length;
-      const againCount = activeTally.filter(t => t.currentStage === 'AGAIN_AUDIT').length;
-      const totalAuditCount = activeTally.length;
+      // 12. Make Invoice: orders that have a Callan but not yet in Invoice history.
+      // Matched by dispatchId — each dispatch transaction, including partial ones, is independent
+      const invoiceHistory = getInvoiceHistory() || [];
+      const invoiceCount = receivedOrders.filter(order => {
+        const orderCallans = callanHistory.filter(ch => ch.orderId === order.orderId);
+        if (orderCallans.length === 0) return false;
 
-      // 14. Bill Not Received
-      const bills = getBillNotReceived() || [];
-      const billNotReceivedCount = bills.filter(b => b.billStatus !== 'Received').length;
+        return orderCallans.some(callanItem => {
+          return !invoiceHistory.some(ih => ih.dispatchId === callanItem.dispatchId);
+        });
+      }).length;
+
+      // 13. Confirm Delivery: orders that have an Invoice but are not 'Delivered' in confirm delivery history
+      // Matched by dispatchId — each dispatch transaction, including partial ones, is independent
+      const confirmHistory = getConfirmDeliveryHistory() || [];
+      const confirmCount = receivedOrders.filter(order => {
+        const orderInvoices = invoiceHistory.filter(ih => ih.orderId === order.orderId);
+        if (orderInvoices.length === 0) return false;
+
+        return orderInvoices.some(invoiceItem => {
+          const cd = confirmHistory.find(ch => ch.dispatchId === invoiceItem.dispatchId);
+          return !cd || cd.deliveryStatus !== 'Delivered';
+        });
+      }).length;
 
       setCounts({ 
-        approval: approvalCount,
-        vendorRate: vendorRateCount,
-        technical: technicalCount,
         management: managementCount,
-        poToBeCreate: poToBeCreateCount,
-        lifting: liftingCount, 
-        storeIn: storeInCount,
-        hodCheck: hodCheckCount,
-        freightPayment: freightPaymentCount,
-        makePayment: makePaymentCount,
-        rejectGRN: rejectGRNCount,
-        sendDebit: sendDebitCount,
-        totalAudit: totalAuditCount,
-        audit: auditCount,
-        rectify: rectifyCount,
-        reaudit: reauditCount,
-        tally: tallyCount,
-        again: againCount,
-        billNotReceived: billNotReceivedCount,
-        enquiry: enquiryCount
+        checkValidation: checkValidationCount,
+        checkDelivery: checkDeliveryCount,
+        dispatch: dispatchCount,
+        packaging: packagingCount,
+        logistic: logisticCount,
+        callan: callanCount,
+        invoice: invoiceCount,
+        confirmDelivery: confirmCount
       });
     };
 
@@ -193,75 +199,41 @@ const Sidebar = ({ isOpen, onClose }) => {
   };
 
   const adminMenuItems = [
-    { path: '/dashboard',           icon: TrendingUp,     label: 'Dashboard' },
+    { path: '/dashboard',           icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/received-order',      icon: FilePlus,       label: 'Received Order' },
+    { path: '/check-validation',    icon: ShieldCheck,    label: 'Check & Validation', count: counts.checkValidation },
+    { path: '/check-delivery',      icon: PackageCheck,   label: 'Check For Delivery', count: counts.checkDelivery },
+    { path: '/production',          icon: Warehouse,      label: 'Production Planning' },
+    { path: '/dispatch-planning',   icon: Truck,          label: 'Dispatch Planning', count: counts.dispatch },
+    { path: '/packaging',           icon: Package,        label: 'Packaging', count: counts.packaging },
+    { path: '/vehicle-logistic',    icon: Truck,          label: 'Vehicle Logistic', count: counts.logistic },
+    { path: '/make-callan',         icon: FileText,       label: 'Make Callan', count: counts.callan },
+    { path: '/make-invoice',        icon: Receipt,        label: 'Make Invoice', count: counts.invoice },
+    { path: '/confirm-delivery',    icon: CheckCircle,    label: 'Confirm Delivery', count: counts.confirmDelivery },
+    { path: '/payment',             icon: Coins,          label: 'Payments' },
+    { path: '/setting',             icon: Settings,       label: 'Setting' },
     { path: '/master',              icon: LayoutGrid,     label: 'Master' },
-    { path: '/create-indent',       icon: FilePlus,       label: 'Create Indent' },
-    { path: '/approval-indent',     icon: ClipboardCheck, label: 'Approval Indent',     count: counts.approval },
-    { path: '/vendor-rate',         icon: Tags,           label: 'Vendor Rate',         count: counts.vendorRate },
-    { path: '/enquiry',             icon: HelpCircle,     label: 'Create Enquiry',      count: counts.enquiry },
-    { path: '/enquiry-history',     icon: History,        label: 'Enquiry History' },
-    { path: '/technical-approval',  icon: Cpu,            label: 'Technical Approval',  count: counts.technical },
-    { path: '/management-approval', icon: UserCheck,      label: 'Management Approval', count: counts.management },
-    { path: '/po-to-be-create',     icon: PackageSearch,  label: 'PO to be Create',     count: counts.poToBeCreate },
-    { path: '/create-po',           icon: FilePlus2,      label: 'Create PO' },
-    { path: '/po-history',          icon: History,        label: 'PO History' },
-    { path: '/lifting',             icon: Truck,          label: 'Lifting',             count: counts.lifting },
-    { path: '/store-in',            icon: Package,        label: 'Store In',            count: counts.storeIn },
-    { path: '/hod-check',           icon: ClipboardCheck, label: 'HOD Check',           count: counts.hodCheck },
-    { path: '/freight-payment',     icon: Truck,          label: 'Freight Payment',     count: counts.freightPayment },
-    { path: '/make-payment',        icon: CreditCard,     label: 'Make Payment',        count: counts.makePayment },
-    { path: '/reject-grn',          icon: Ban,            label: 'Reject for GRN',      count: counts.rejectGRN },
-    { path: '/send-debit',          icon: FileText,       label: 'Send Debit Note',     count: counts.sendDebit },
-    
-    // Collapsible Audit Data Menu
-    {
-      isNested: true,
-      isOpen: isAuditOpen,
-      onToggle: () => setIsAuditOpen(!isAuditOpen),
-      icon: ShieldCheck,
-      label: 'Audit Data',
-      count: counts.totalAudit,
-      subItems: [
-        { path: '/audit-all-pending', label: 'All Pending', count: counts.totalAudit },
-        { path: '/audit-stage', label: 'Audit stage', count: counts.audit },
-        { path: '/rectify-stage', label: 'Rectify stage', count: counts.rectify },
-        { path: '/reaudit-stage', label: 'Reaudit stage', count: counts.reaudit },
-        { path: '/tally-entry', label: 'Tally Entry', count: counts.tally },
-        { path: '/again-audit', label: 'Again Audit', count: counts.again }
-      ]
-    },
-
-    // PC Dashboard Route
-    { path: '/pcdb', icon: Coins, label: 'PC Dashboard' },
-
-    // Collapsible Store Data Menu
-    {
-      isNested: true,
-      isOpen: isStoreDataOpen,
-      onToggle: () => setIsStoreDataOpen(!isStoreDataOpen),
-      icon: Warehouse,
-      label: 'Store Data',
-      subItems: [
-        { path: '/store-issue', label: 'Store Issue' },
-        { path: '/store-issue-return', label: 'Store Return' }
-      ]
-    },
-
-    // Inventory Route
-    { path: '/inventory', icon: Blocks, label: 'Inventory' },
-
-    // Bill Not Received Route
-    { path: '/bill-not-received', icon: Receipt, label: 'Bill Not Received', count: counts.billNotReceived },
-
-    { path: '/settings',            icon: Settings,       label: 'Settings' },
   ];
 
   const employeeMenuItems = [
+    { path: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/received-order', icon: FilePlus,   label: 'Received Order' },
+    { path: '/check-validation', icon: ShieldCheck, label: 'Check & Validation', count: counts.checkValidation },
+    { path: '/check-delivery', icon: PackageCheck, label: 'Check For Delivery', count: counts.checkDelivery },
+    { path: '/production',    icon: Warehouse,  label: 'Production Planning' },
+    { path: '/dispatch-planning', icon: Truck, label: 'Dispatch Planning', count: counts.dispatch },
+    { path: '/packaging', icon: Package, label: 'Packaging', count: counts.packaging },
+    { path: '/vehicle-logistic', icon: Truck, label: 'Vehicle Logistic', count: counts.logistic },
+    { path: '/make-callan', icon: FileText, label: 'Make Callan', count: counts.callan },
+    { path: '/make-invoice', icon: Receipt, label: 'Make Invoice', count: counts.invoice },
+    { path: '/confirm-delivery', icon: CheckCircle, label: 'Confirm Delivery', count: counts.confirmDelivery },
+    { path: '/payment', icon: Coins, label: 'Payments' },
     { path: '/master',        icon: LayoutGrid, label: 'Master' },
-    { path: '/create-indent', icon: FilePlus,   label: 'Create Indent' },
   ];
 
-  const menuItems = user?.role === 'ADMIN' ? adminMenuItems : employeeMenuItems;
+  const menuItems = user?.role === 'ADMIN' 
+    ? adminMenuItems 
+    : employeeMenuItems.filter(item => user?.accessPages?.includes(item.path));
 
   return (
     <>

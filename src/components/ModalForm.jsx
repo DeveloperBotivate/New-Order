@@ -19,6 +19,7 @@ const ModalForm = ({
   submitText = 'Submit',
   cancelText = 'Cancel',
   maxWidth = 'max-w-2xl',
+  maxHeight = '85vh',
   zIndex = 'z-[100]',
   extraFooterAction = null
 }) => {
@@ -28,7 +29,7 @@ const ModalForm = ({
     <div className={`fixed inset-0 lg:left-56 2xl:left-60 bg-black/60 backdrop-blur-[1px] flex items-center justify-center ${zIndex} p-3 md:p-4 animate-in fade-in duration-200`}>
       <div
         className={`bg-white rounded-xl shadow-2xl w-full ${maxWidth} flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200`}
-        style={{ maxHeight: '60vh' }}
+        style={{ maxHeight }}
       >
         {/* Ultra-Compact Header - No Cross Icon */}
         <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-center bg-white flex-shrink-0 z-20">

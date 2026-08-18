@@ -91,6 +91,56 @@ export const fileToBase64 = (file) => {
   });
 };
 
+// Downscale + compress an image file before it gets stored as base64.
+// localStorage has a hard ~5-10MB quota for the ENTIRE app, so a single
+// uncompressed phone photo (often 3-8MB) can blow the whole quota by itself.
+// This resizes to a reasonable max dimension and re-encodes as JPEG, which
+// typically shrinks a multi-MB photo down to well under 50KB.
+export const compressImageFile = (file, { maxDimension = 600, quality = 0.5 } = {}) => {
+  return new Promise((resolve, reject) => {
+    // Non-image files (e.g. a PDF slipped through an "image/*" input) can't be
+    // drawn to a canvas — fall back to plain base64 rather than failing outright.
+    if (!file.type || !file.type.startsWith('image/')) {
+      fileToBase64(file).then(resolve).catch(reject);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = (error) => reject(error);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => {
+        // If decoding ever fails, still return something rather than blocking the user
+        resolve(reader.result);
+      };
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width >= height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressed = canvas.toDataURL('image/jpeg', quality);
+        // Guard against a pathological case where re-encoding somehow grows the file
+        resolve(compressed.length < reader.result.length ? compressed : reader.result);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 // Get file name from base64
 export const getFileNameFromBase64 = (base64String) => {
   const arr = base64String.split(',');

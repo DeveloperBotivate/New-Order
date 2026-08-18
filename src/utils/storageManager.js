@@ -1,4 +1,5 @@
 // Storage Manager - Handle all localStorage operations
+import toast from 'react-hot-toast';
 
 const STORAGE_KEYS = {
   USERS: 'pcb_users',
@@ -13,6 +14,14 @@ const STORAGE_KEYS = {
   GROUP_HEADS: 'pcb_group_heads_v3',
   UOMS: 'pcb_uoms_v3',
   DEPARTMENTS: 'pcb_departments_v3',
+  DIVISIONS: 'pcb_divisions_v1',
+  PERSONS: 'pcb_persons_v1',
+  TRANSPORTING_TYPES: 'pcb_transporting_types_v1',
+  TRANSPORTER_AGENCIES: 'pcb_transporter_agencies_v1',
+  PURCHASE_ORDERS: 'pcb_purchase_orders_v1',
+  RECEIVED_ORDERS: 'pcb_received_orders_v1',
+  DELIVERY_HISTORY: 'pcb_delivery_history_v1',
+  STORE_RETURNS: 'pcb_store_returns_v1',
   INDENTS: 'pcb_indents_v3',
   POS: 'pcb_pos_v4',
   TERMS_CONDITIONS: 'pcb_terms_conditions_v1',
@@ -25,16 +34,22 @@ const STORAGE_KEYS = {
   TALLY_ENTRIES: 'pcb_tally_entries_v1',
   BILL_NOT_RECEIVED: 'pcb_bill_not_received_v1',
   STORE_ISSUES: 'pcb_store_issues_v1',
-  STORE_RETURNS: 'pcb_store_issue_returns_v1',
   INVENTORY: 'pcb_inventory_v1',
-  QUOTATION_HISTORY: 'pcb_quotation_history_v1'
+  QUOTATION_HISTORY: 'pcb_quotation_history_v1',
+  DISPATCH_HISTORY: 'pcb_dispatch_history_v1',
+  PACKAGING_HISTORY: 'pcb_packaging_history_v1',
+  LOGISTIC_HISTORY: 'pcb_logistic_history_v1',
+  AGENCY_HISTORY: 'pcb_agency_history_v1',
+  CALLAN_HISTORY: 'pcb_callan_history_v1',
+  INVOICE_HISTORY: 'pcb_invoice_history_v1',
+  CONFIRM_DELIVERY_HISTORY: 'pcb_confirm_delivery_v1'
 };
 
 // Initialize default data
 const DEFAULT_USERS = [
-  { id: 'admin', name: 'Admin User', password: 'admin123', role: 'ADMIN', accessPages: [] },
-  { id: 'user', name: 'Employee 1', password: 'user123', role: 'USER', accessPages: [] },
-  { id: 'user2', name: 'Employee 2', password: 'user123', role: 'USER', accessPages: [] }
+  { id: 'admin', name: 'Admin User', password: 'admin123', role: 'ADMIN', division: 'Management', accessPages: ['/received-order', '/check-validation', '/check-delivery', '/production', '/dispatch-planning', '/packaging', '/vehicle-logistic', '/make-callan', '/make-invoice', '/confirm-delivery', '/payment', '/master'] },
+  { id: 'user', name: 'Employee 1', password: 'user123', role: 'USER', division: 'Logistics', accessPages: ['/received-order', '/check-validation', '/check-delivery'] },
+  { id: 'user2', name: 'Employee 2', password: 'user123', role: 'USER', division: 'Production', accessPages: ['/production', '/dispatch-planning', '/packaging'] }
 ];
 
 const DEFAULT_SETTINGS = {
@@ -54,6 +69,7 @@ export const initializeStorage = () => {
   if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
   }
+
   if (!localStorage.getItem(STORAGE_KEYS.SETTINGS)) {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
   }
@@ -107,11 +123,11 @@ export const initializeStorage = () => {
     console.log('Migration Complete: JJSPL updated to Botivate');
   }
 
-  // Pre-seed new modules on startup
-  getBillNotReceived();
-  getStoreIssues();
-  getStoreReturns();
-  getInventory();
+  // Note: Bill Not Received / Store Issues / Store Returns / Inventory used to be
+  // pre-seeded here, but none of those modules are reachable from the current app
+  // (no route renders them) — seeding them on every load just burned localStorage
+  // quota for data nobody could ever see. Removed; the functions still exist and
+  // will lazily seed themselves if something starts using them again.
 };
 
 // Get data from storage
@@ -120,8 +136,148 @@ export const getFromStorage = (key) => {
   return data ? JSON.parse(data) : null;
 };
 
-// Save data to storage
+const isQuotaError = (error) => !!error && (error.name === 'QuotaExceededError' || error.code === 22);
+
+// Storage keys confirmed unused by any currently-routed page in this app (legacy
+// leftovers from before the O2D rebuild). Safe to purge automatically to reclaim
+// quota — nothing reachable ever reads them back.
+const RECLAIMABLE_DEAD_KEYS = [
+  STORAGE_KEYS.CREDITS, STORAGE_KEYS.EXPENSES, STORAGE_KEYS.POS, STORAGE_KEYS.LIFTING,
+  STORAGE_KEYS.STORE_IN, STORAGE_KEYS.DIRECT_STORE_IN, STORAGE_KEYS.REJECT_GRN,
+  STORAGE_KEYS.DEBIT_NOTES, STORAGE_KEYS.TALLY_ENTRIES, STORAGE_KEYS.BILL_NOT_RECEIVED,
+  STORAGE_KEYS.STORE_ISSUES, STORAGE_KEYS.STORE_RETURNS, STORAGE_KEYS.INVENTORY,
+  STORAGE_KEYS.QUOTATION_HISTORY
+];
+
+let hasPurgedDeadKeysThisSession = false;
+
+const purgeDeadLegacyKeys = () => {
+  if (hasPurgedDeadKeysThisSession) return false;
+  hasPurgedDeadKeysThisSession = true;
+  let freedAny = false;
+  RECLAIMABLE_DEAD_KEYS.forEach(key => {
+    if (localStorage.getItem(key) !== null) {
+      localStorage.removeItem(key);
+      freedAny = true;
+    }
+  });
+  return freedAny;
+};
+
+// Base64 attachment fields used across the app's various upload forms.
+const IMAGE_FIELD_NAMES = [
+  'poImage', 'lrCopy', 'biltyCopy', 'callanImage', 'invoiceImage', 'receiptImage',
+  'challanImage', 'billImage', 'photoOfBill'
+];
+
+// Null out large base64 attachment fields on all but the most recent records in
+// an array-shaped store, to shed old attachment bloat while keeping every record
+// (and its non-image data) intact. Returns true if anything was actually trimmed.
+const shrinkOldAttachments = (key, keepRecent = 10) => {
+  const raw = localStorage.getItem(key);
+  if (!raw) return false;
+
+  let data;
+  try { data = JSON.parse(raw); } catch { return false; }
+  if (!Array.isArray(data) || data.length <= keepRecent) return false;
+
+  let changed = false;
+  const cutoff = data.length - keepRecent;
+  for (let i = 0; i < cutoff; i++) {
+    const record = data[i];
+    if (!record || typeof record !== 'object') continue;
+    IMAGE_FIELD_NAMES.forEach(field => {
+      if (typeof record[field] === 'string' && record[field].length > 5000) {
+        record[field] = '';
+        changed = true;
+      }
+    });
+  }
+  if (!changed) return false;
+
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+    return true;
+  } catch {
+    return false; // couldn't even write the shrunk version — move on
+  }
+};
+
+const tryWrite = (key, data) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+    return true;
+  } catch (error) {
+    if (!isQuotaError(error)) throw error;
+    return false;
+  }
+};
+
+// Save data to storage. If the browser's quota (~5-10MB total for this app) is
+// already exhausted, attempts automatic recovery before giving up:
+//   1. Purge confirmed-dead legacy stores nothing in the app can even read.
+//   2. Strip base64 attachments across every store, escalating how much of the
+//      "recent" tail it protects each pass (10 → 3 → 0 records) until the save
+//      fits. With small datasets, a handful of real records can ALL fall inside
+//      a fixed "keep the 10 most recent" window and nothing ever gets freed —
+//      escalating to 0 guarantees forward progress instead of quietly giving up.
+// Only if every tier fails does it surface an error asking for a manual clear.
 export const saveToStorage = (key, data) => {
+  if (tryWrite(key, data)) return;
+
+  console.warn(`Storage quota exceeded while saving "${key}" — attempting automatic cleanup.`);
+
+  const freedDeadKeys = purgeDeadLegacyKeys();
+  if (tryWrite(key, data)) {
+    if (freedDeadKeys) toast.success('Freed up storage space automatically.', { duration: 3000 });
+    return;
+  }
+
+  for (const keepRecent of [10, 3, 0]) {
+    let shrunkAny = false;
+    Object.values(STORAGE_KEYS).forEach(k => {
+      if (shrinkOldAttachments(k, keepRecent)) shrunkAny = true;
+    });
+
+    if (!shrunkAny) continue; // this pass found nothing new to strip, escalate further
+
+    if (tryWrite(key, data)) {
+      toast.success(
+        keepRecent === 0
+          ? 'Storage was full — cleared older uploaded images across the app to make room for this save.'
+          : 'Freed up space by clearing older uploaded images to make room for this save.',
+        { duration: 7000 }
+      );
+      return;
+    }
+
+    if (keepRecent === 0 && !tryWrite(key, data)) {
+      // LAST RESORT: The incoming data ITSELF has an image so massive that it exceeds the quota
+      // even with empty storage. Strip images from the incoming data array and try one final time.
+      if (Array.isArray(data)) {
+        let dataStripped = false;
+        data.forEach(record => {
+          if (record && typeof record === 'object') {
+            IMAGE_FIELD_NAMES.forEach(field => {
+              if (typeof record[field] === 'string' && record[field].length > 5000) {
+                record[field] = '';
+                dataStripped = true;
+              }
+            });
+          }
+        });
+        if (dataStripped && tryWrite(key, data)) {
+          toast.error('The image you uploaded was too large and had to be dropped to save the record.', { duration: 7000 });
+          return;
+        }
+      }
+    }
+  }
+
+  console.error(`Storage quota exceeded while saving "${key}" even after automatic cleanup.`);
+  toast.error("Storage is completely full and couldn't be freed automatically. Please clear this site's data (DevTools → Application → Local Storage) to continue.", { duration: 8000 });
+  // Surface a real error either way — throwing localStorage's own error keeps
+  // its type/name intact for anything upstream that inspects it.
   localStorage.setItem(key, JSON.stringify(data));
 };
 
@@ -505,21 +661,45 @@ export const saveCompany = (company) => {
 // Export keys
 export { STORAGE_KEYS };
 
-// Item Functions
+// Item Functions (Product Name Master: name / uom / price)
 export const getMasterItems = () => {
-  const items = getFromStorage(STORAGE_KEYS.ITEMS) || [];
-  if (items.length < 1) {
-    const groupHeads = getGroupHeads();
-    const uoms = getUOMs();
-    const dummyItems = Array.from({ length: 50 }, (_, i) => ({
+  let items = getFromStorage(STORAGE_KEYS.ITEMS) || [];
+  const DATA_VERSION = 'v2_product_price_20';
+  const currentVersion = getFromStorage('master_items_version');
+
+  if (items.length < 1 || currentVersion !== DATA_VERSION) {
+    const productCatalog = [
+      { name: 'Steel Pipe 2 Inch', uom: 'MTR', price: 250 },
+      { name: 'Cement Bag 50kg', uom: 'BOX', price: 380 },
+      { name: 'Copper Wire 1.5mm', uom: 'MTR', price: 45 },
+      { name: 'LED Bulb 9W', uom: 'PCS', price: 120 },
+      { name: 'PVC Pipe 4 Inch', uom: 'MTR', price: 180 },
+      { name: 'Paint Bucket White', uom: 'LTR', price: 950 },
+      { name: 'Safety Helmet', uom: 'PCS', price: 220 },
+      { name: 'Welding Rod 3.15mm', uom: 'KG', price: 210 },
+      { name: 'Diesel Fuel', uom: 'LTR', price: 92 },
+      { name: 'Grinding Wheel 4 Inch', uom: 'PCS', price: 85 },
+      { name: 'Cotton Gloves', uom: 'PCS', price: 25 },
+      { name: 'Plywood Sheet 12mm', uom: 'PCS', price: 1450 },
+      { name: 'Nut Bolt Set M8', uom: 'BOX', price: 150 },
+      { name: 'Industrial Grease', uom: 'KG', price: 320 },
+      { name: 'Rubber Gasket', uom: 'PCS', price: 60 },
+      { name: 'Aluminium Sheet 1mm', uom: 'PCS', price: 890 },
+      { name: 'Cable Tie 200mm', uom: 'BOX', price: 95 },
+      { name: 'Hydraulic Oil', uom: 'LTR', price: 275 },
+      { name: 'Fire Extinguisher 5kg', uom: 'PCS', price: 1800 },
+      { name: 'Packing Tape Roll', uom: 'PCS', price: 40 }
+    ];
+    const dummyItems = productCatalog.map((p, i) => ({
       id: `ITM-${Date.now()}-${i}`,
       timestamp: new Date(Date.now() - i * 1800000).toISOString(),
       inNo: `IN-${String(i + 1).padStart(3, '0')}`,
-      name: `Electronic Component ${i + 1}`,
-      groupHead: groupHeads[i % groupHeads.length]?.name || 'Electronics',
-      uom: uoms[i % uoms.length]?.name || 'PCS'
+      name: p.name,
+      uom: p.uom,
+      price: p.price
     }));
     saveToStorage(STORAGE_KEYS.ITEMS, dummyItems);
+    saveToStorage('master_items_version', DATA_VERSION);
     return dummyItems;
   }
   return items;
@@ -598,6 +778,374 @@ export const saveDepartment = (item) => {
   const data = getDepartments();
   data.push(item);
   saveDepartments(data);
+};
+
+// Division Functions
+export const getDivisions = () => {
+  const divisions = getFromStorage(STORAGE_KEYS.DIVISIONS) || [];
+  if (divisions.length < 1) {
+    const defaultDivisions = ['Nutech Composite', 'Nutech Pipes', 'Protech Max'];
+    const dummyDivisions = defaultDivisions.map((name, i) => ({
+      id: `DV-${Date.now()}-${i}`,
+      timestamp: new Date().toISOString(),
+      dvNo: `DV-${String(i + 1).padStart(3, '0')}`,
+      name: name
+    }));
+    saveToStorage(STORAGE_KEYS.DIVISIONS, dummyDivisions);
+    return dummyDivisions;
+  }
+  return divisions;
+};
+export const saveDivisions = (data) => saveToStorage(STORAGE_KEYS.DIVISIONS, data);
+export const saveDivision = (item) => {
+  const data = getDivisions();
+  data.push(item);
+  saveDivisions(data);
+};
+
+// Transporting Type Functions
+export const getTransportingTypes = () => {
+  const types = getFromStorage(STORAGE_KEYS.TRANSPORTING_TYPES) || [];
+  if (types.length < 1) {
+    const defaultTypes = ['FOR', 'Ex Factory', 'Ex Factory Transpoter Office'];
+    const dummyTypes = defaultTypes.map((name, i) => ({
+      id: `TT-${Date.now()}-${i}`,
+      timestamp: new Date().toISOString(),
+      ttNo: `TT-${String(i + 1).padStart(3, '0')}`,
+      name: name
+    }));
+    saveToStorage(STORAGE_KEYS.TRANSPORTING_TYPES, dummyTypes);
+    return dummyTypes;
+  }
+  return types;
+};
+export const saveTransportingTypes = (data) => saveToStorage(STORAGE_KEYS.TRANSPORTING_TYPES, data);
+export const saveTransportingType = (item) => {
+  const data = getTransportingTypes();
+  data.push(item);
+  saveTransportingTypes(data);
+};
+
+// Transporter Agency Functions
+export const getTransporterAgencies = () => {
+  const agencies = getFromStorage(STORAGE_KEYS.TRANSPORTER_AGENCIES) || [];
+  if (agencies.length < 1) {
+    const defaultAgencies = [
+      { name: 'FastTrack Logistics', vehicleNo: 'MH-12-AB-1234', driverName: 'Rajesh Kumar', mobile: '9876543210', lr: 'LR-1001' },
+      { name: 'SafeWay Transports', vehicleNo: 'DL-01-CD-5678', driverName: 'Amit Singh', mobile: '9876543211', lr: 'LR-1002' },
+      { name: 'Speedy Movers', vehicleNo: 'KA-05-EF-9012', driverName: 'Suresh Patil', mobile: '9876543212', lr: 'LR-1003' },
+      { name: 'Reliable Carriers', vehicleNo: 'GJ-02-GH-3456', driverName: 'Vikram Desai', mobile: '9876543213', lr: 'LR-1004' },
+      { name: 'Express Freight', vehicleNo: 'UP-32-IJ-7890', driverName: 'Manoj Sharma', mobile: '9876543214', lr: 'LR-1005' },
+      { name: 'Prime Logistics', vehicleNo: 'TN-09-KL-1234', driverName: 'Karthik Raja', mobile: '9876543215', lr: 'LR-1006' },
+      { name: 'Global Transports', vehicleNo: 'WB-02-MN-5678', driverName: 'Subhasish Das', mobile: '9876543216', lr: 'LR-1007' },
+      { name: 'Metro Cargo', vehicleNo: 'MH-04-OP-9012', driverName: 'Ramesh Jadhav', mobile: '9876543217', lr: 'LR-1008' },
+      { name: 'All India Transports', vehicleNo: 'RJ-14-QR-3456', driverName: 'Deepak Meena', mobile: '9876543218', lr: 'LR-1009' },
+      { name: 'BlueDart Logistics', vehicleNo: 'DL-09-ST-7890', driverName: 'Sandeep Yadav', mobile: '9876543219', lr: 'LR-1010' }
+    ];
+    const dummyAgencies = defaultAgencies.map((agency, i) => ({
+      id: `TA-${Date.now()}-${i}`,
+      timestamp: new Date().toISOString(),
+      taNo: `TA-${String(i + 1).padStart(3, '0')}`,
+      name: agency.name,
+      vehicleNo: agency.vehicleNo,
+      driverName: agency.driverName,
+      mobile: agency.mobile,
+      lr: agency.lr
+    }));
+    saveToStorage(STORAGE_KEYS.TRANSPORTER_AGENCIES, dummyAgencies);
+    return dummyAgencies;
+  }
+  return agencies;
+};
+export const saveTransporterAgencies = (data) => saveToStorage(STORAGE_KEYS.TRANSPORTER_AGENCIES, data);
+export const saveTransporterAgency = (item) => {
+  const data = getTransporterAgencies();
+  data.push(item);
+  saveTransporterAgencies(data);
+};
+
+// Person Functions
+export const getPersons = () => {
+  const persons = getFromStorage(STORAGE_KEYS.PERSONS) || [];
+  if (persons.length === 0) {
+    const dummyData = [
+      { id: 'PRS-1', name: 'Rajesh Kumar', timestamp: new Date().toISOString(), prNo: 'OR-001' },
+      { id: 'PRS-2', name: 'Amit Singh', timestamp: new Date().toISOString(), prNo: 'OR-002' },
+      { id: 'PRS-3', name: 'Priya Sharma', timestamp: new Date().toISOString(), prNo: 'OR-003' },
+      { id: 'PRS-4', name: 'Sanjay Gupta', timestamp: new Date().toISOString(), prNo: 'OR-004' },
+      { id: 'PRS-5', name: 'Neha Patel', timestamp: new Date().toISOString(), prNo: 'OR-005' },
+      { id: 'PRS-6', name: 'Vikram Reddy', timestamp: new Date().toISOString(), prNo: 'OR-006' },
+      { id: 'PRS-7', name: 'Anjali Desai', timestamp: new Date().toISOString(), prNo: 'OR-007' },
+      { id: 'PRS-8', name: 'Rahul Verma', timestamp: new Date().toISOString(), prNo: 'OR-008' },
+      { id: 'PRS-9', name: 'Pooja Joshi', timestamp: new Date().toISOString(), prNo: 'OR-009' },
+      { id: 'PRS-10', name: 'Arun Nair', timestamp: new Date().toISOString(), prNo: 'OR-010' },
+    ];
+    saveToStorage(STORAGE_KEYS.PERSONS, dummyData);
+    return dummyData;
+  }
+  return persons;
+};
+export const savePersons = (data) => saveToStorage(STORAGE_KEYS.PERSONS, data);
+export const savePerson = (item) => {
+  const data = getPersons();
+  data.push(item);
+  savePersons(data);
+};
+
+// Received Order Functions
+export const getReceivedOrders = () => {
+  const orders = getFromStorage(STORAGE_KEYS.RECEIVED_ORDERS) || [];
+  return orders;
+};
+export const saveReceivedOrders = (data) => saveToStorage(STORAGE_KEYS.RECEIVED_ORDERS, data);
+export const saveReceivedOrder = (item) => {
+  const data = getReceivedOrders();
+  data.push(item);
+  saveReceivedOrders(data);
+};
+export const updateReceivedOrder = (updatedItem) => {
+  const data = getReceivedOrders();
+  const index = data.findIndex(o => o.id === updatedItem.id);
+  if (index !== -1) {
+    data[index] = updatedItem;
+    saveReceivedOrders(data);
+  }
+};
+
+// Delivery History Functions
+export const getDeliveryHistory = () => {
+  const history = getFromStorage(STORAGE_KEYS.DELIVERY_HISTORY) || [];
+  
+  // Quick migration to fix duplicate Delivery IDs from previous bugs
+  const hasMigrated = getFromStorage('da_id_fix_migration');
+  if (!hasMigrated && history.length > 0) {
+    let nextCount = 1;
+    history.forEach(item => {
+      item.deliveryApproverId = `DA-${String(nextCount).padStart(3, '0')}`;
+      nextCount++;
+    });
+    saveToStorage(STORAGE_KEYS.DELIVERY_HISTORY, history);
+    saveToStorage('da_id_fix_migration', true);
+  }
+  
+  return history;
+};
+
+export const saveDeliveryHistory = (data) => saveToStorage(STORAGE_KEYS.DELIVERY_HISTORY, data);
+
+export const saveDeliveryTransaction = (items) => {
+  const history = getDeliveryHistory();
+  const timestamp = new Date().toISOString();
+  
+  // Find highest DA count to ensure we always increment properly
+  const daIds = history.map(h => h.deliveryApproverId).filter(id => id && id.startsWith('DA-'));
+  let nextCount = 1;
+  if (daIds.length > 0) {
+    const maxDA = Math.max(...daIds.map(id => parseInt(id.replace('DA-', ''), 10) || 0));
+    nextCount = maxDA + 1;
+  }
+  
+  const newRecords = items.map((item, idx) => {
+    const deliveryApproverId = `DA-${String(nextCount + idx).padStart(3, '0')}`;
+    return {
+      ...item,
+      id: `del_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      deliveryApproverId,
+      timestamp
+    };
+  });
+  
+  history.push(...newRecords);
+  saveDeliveryHistory(history);
+};
+
+export const updateDeliveryHistoryItems = (updatedItems) => {
+  const history = getDeliveryHistory();
+  updatedItems.forEach(updatedItem => {
+    const index = history.findIndex(h => h.id === updatedItem.id);
+    if (index !== -1) {
+      history[index] = { ...history[index], ...updatedItem, updatedAt: new Date().toISOString() };
+    }
+  });
+  saveDeliveryHistory(history);
+};
+
+// Dispatch History Functions
+export const getDispatchHistory = () => {
+  const history = getFromStorage(STORAGE_KEYS.DISPATCH_HISTORY) || [];
+  return history;
+};
+
+export const saveDispatchHistory = (data) => saveToStorage(STORAGE_KEYS.DISPATCH_HISTORY, data);
+
+export const saveDispatchTransaction = (items) => {
+  const history = getDispatchHistory();
+  const timestamp = new Date().toISOString();
+  
+  // Find highest DS count to ensure we always increment properly
+  const dsIds = history.map(h => h.dispatchId).filter(id => id && id.startsWith('DS-'));
+  let nextCount = 1;
+  if (dsIds.length > 0) {
+    const maxDS = Math.max(...dsIds.map(id => parseInt(id.replace('DS-', ''), 10) || 0));
+    nextCount = maxDS + 1;
+  }
+  
+  const newRecords = items.map((item, idx) => {
+    const dispatchId = `DS-${String(nextCount + idx).padStart(3, '0')}`;
+    return {
+      ...item,
+      id: `disp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      dispatchId,
+      dispatchTimestamp: timestamp
+    };
+  });
+  
+  history.push(...newRecords);
+  saveDispatchHistory(history);
+};
+
+// Packaging History Functions
+export const getPackagingHistory = () => {
+  const history = getFromStorage(STORAGE_KEYS.PACKAGING_HISTORY) || [];
+  return history;
+};
+
+export const savePackagingHistory = (data) => saveToStorage(STORAGE_KEYS.PACKAGING_HISTORY, data);
+
+export const savePackagingTransaction = (items) => {
+  const history = getPackagingHistory();
+  const timestamp = new Date().toISOString();
+  
+  const newRecords = items.map(item => ({
+    ...item,
+    id: `pkg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    packagingTimestamp: timestamp
+  }));
+  
+  history.push(...newRecords);
+  savePackagingHistory(history);
+};
+
+// Logistic History Functions
+export const getLogisticHistory = () => {
+  const history = getFromStorage(STORAGE_KEYS.LOGISTIC_HISTORY) || [];
+  return history;
+};
+
+export const saveLogisticHistory = (data) => saveToStorage(STORAGE_KEYS.LOGISTIC_HISTORY, data);
+
+export const saveLogisticTransaction = (items) => {
+  const history = getLogisticHistory();
+  const timestamp = new Date().toISOString();
+  
+  const newRecords = items.map(item => ({
+    ...item,
+    id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    logisticTimestamp: timestamp
+  }));
+  
+  history.push(...newRecords);
+  saveLogisticHistory(history);
+};
+
+// Agency History Functions
+export const getAgencyHistory = () => {
+  const history = getFromStorage(STORAGE_KEYS.AGENCY_HISTORY) || [];
+  return history;
+};
+
+export const saveAgencyHistory = (data) => saveToStorage(STORAGE_KEYS.AGENCY_HISTORY, data);
+
+export const saveAgencyTransaction = (items) => {
+  const history = getAgencyHistory();
+  const timestamp = new Date().toISOString();
+  
+  const newRecords = items.map(item => ({
+    ...item,
+    id: `agy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    agencyTimestamp: timestamp
+  }));
+  
+  history.push(...newRecords);
+  saveAgencyHistory(history);
+};
+
+// Callan History Functions
+export const getCallanHistory = () => {
+  const history = getFromStorage(STORAGE_KEYS.CALLAN_HISTORY) || [];
+  return history;
+};
+
+export const saveCallanHistory = (data) => saveToStorage(STORAGE_KEYS.CALLAN_HISTORY, data);
+
+export const saveCallanTransaction = (items) => {
+  const history = getCallanHistory();
+  const timestamp = new Date().toISOString();
+  
+  const newRecords = items.map((item) => ({
+    ...item,
+    id: `cln_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    timestamp
+  }));
+  
+  history.push(...newRecords);
+  saveCallanHistory(history);
+};
+
+// Invoice History Functions
+export const getInvoiceHistory = () => {
+  return getFromStorage(STORAGE_KEYS.INVOICE_HISTORY) || [];
+};
+
+export const saveInvoiceHistory = (data) => saveToStorage(STORAGE_KEYS.INVOICE_HISTORY, data);
+
+export const saveInvoiceTransaction = (items) => {
+  const history = getInvoiceHistory();
+  const timestamp = new Date().toISOString();
+  
+  const newRecords = items.map((item) => ({
+    ...item,
+    id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    timestamp
+  }));
+  
+  history.push(...newRecords);
+  saveInvoiceHistory(history);
+};
+
+// Confirm Delivery History Functions
+export const getConfirmDeliveryHistory = () => {
+  return getFromStorage(STORAGE_KEYS.CONFIRM_DELIVERY_HISTORY) || [];
+};
+
+export const saveConfirmDeliveryHistory = (data) => saveToStorage(STORAGE_KEYS.CONFIRM_DELIVERY_HISTORY, data);
+
+export const saveConfirmDeliveryTransaction = (items) => {
+  const history = getConfirmDeliveryHistory();
+  const timestamp = new Date().toISOString();
+  
+  items.forEach(item => {
+    // If updating an existing record (e.g. In Transit -> Delivered).
+    // Matched by dispatchId, not deliveryApproverId — a single delivery can be split
+    // across multiple PARTIAL dispatch transactions that share one deliveryApproverId,
+    // so matching on that would let one dispatch's update silently clobber another's record.
+    const existingIdx = history.findIndex(h => h.dispatchId === item.dispatchId);
+    if (existingIdx >= 0) {
+      history[existingIdx] = {
+        ...history[existingIdx],
+        ...item,
+        updateTimestamp: timestamp
+      };
+    } else {
+      history.push({
+        ...item,
+        id: `cdel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        timestamp
+      });
+    }
+  });
+  
+  saveConfirmDeliveryHistory(history);
 };
 
 // Indent Functions
@@ -2258,3 +2806,25 @@ export const insertQuotationHistory = (rows) => {
   return history;
 };
 
+// --- Payment Operations ---
+export const getPaymentHistory = () => {
+  return getFromStorage(STORAGE_KEYS.PAYMENTS) || [];
+};
+
+export const savePaymentHistory = (records) => {
+  saveToStorage(STORAGE_KEYS.PAYMENTS, records);
+};
+
+export const savePaymentTransaction = (items) => {
+  const history = getPaymentHistory();
+  const timestamp = new Date().toISOString();
+  
+  const newRecords = items.map(item => ({
+    ...item,
+    id: `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    timestamp
+  }));
+  
+  history.push(...newRecords);
+  savePaymentHistory(history);
+};

@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Edit, Trash2, Plus, Minus } from 'lucide-react';
-import { 
-  getMasterItems, 
-  saveMasterItems, 
-  saveMasterItem, 
-  getGroupHeads, 
-  saveGroupHeads,
+import {
+  getMasterItems,
+  saveMasterItems,
+  saveMasterItem,
   getUOMs,
   saveUOMs
 } from '../../utils/storageManager';
@@ -17,22 +15,19 @@ import ModalForm from '../../components/ModalForm';
 
 export default function Item({ searchQuery, triggerAdd }) {
   const [items, setItems] = useState([]);
-  const [groupHeads, setGroupHeads] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [showGroupHeadModal, setShowGroupHeadModal] = useState(false);
   const [showUomModal, setShowUomModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
-  
+
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, type: 'success', title: '', message: '', onConfirm: () => {} });
 
-  const [formData, setFormData] = useState({ name: '', groupHead: '', uom: '' });
-  const [groupHeadEntries, setGroupHeadEntries] = useState([{ name: '' }]);
+  const [formData, setFormData] = useState({ name: '', uom: '', price: '' });
   const [uomEntries, setUomEntries] = useState([{ name: '' }]);
 
-  const headers = ['Actions', 'Timestamp', 'IN-NO', 'Item Name', 'Group Head', 'UOM'];
+  const headers = ['Actions', 'Timestamp', 'IN-NO', 'Product Name', 'UOM', 'Price'];
 
   useEffect(() => {
     refreshData();
@@ -40,7 +35,6 @@ export default function Item({ searchQuery, triggerAdd }) {
 
   const refreshData = () => {
     setItems(getMasterItems());
-    setGroupHeads(getGroupHeads());
     setUoms(getUOMs());
   };
 
@@ -54,7 +48,6 @@ export default function Item({ searchQuery, triggerAdd }) {
       return (
         item.name?.toLowerCase().includes(q) ||
         item.inNo?.toLowerCase().includes(q) ||
-        item.groupHead?.toLowerCase().includes(q) ||
         item.uom?.toLowerCase().includes(q)
       );
     });
@@ -66,13 +59,13 @@ export default function Item({ searchQuery, triggerAdd }) {
 
   const handleAdd = () => {
     setEditingId(null);
-    setFormData({ name: '', groupHead: '', uom: '' });
+    setFormData({ name: '', uom: '', price: '' });
     setShowModal(true);
   };
 
   const handleEdit = (item) => {
     setEditingId(item.id);
-    setFormData({ ...item });
+    setFormData({ name: item.name, uom: item.uom, price: item.price ?? '' });
     setShowModal(true);
   };
 
@@ -81,59 +74,39 @@ export default function Item({ searchQuery, triggerAdd }) {
   };
 
   const handleDelete = (id) => {
-    showAlert('confirm', 'Delete Item?', 'Are you sure you want to delete this item from the master database?', () => {
+    showAlert('confirm', 'Delete Product?', 'Are you sure you want to delete this product from the master database?', () => {
       const updated = items.filter(i => i.id !== id);
       saveMasterItems(updated);
       setItems(updated);
-      showAlert('success', 'Deleted!', 'Item has been successfully removed.');
+      showAlert('success', 'Deleted!', 'Product has been successfully removed.');
     });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.groupHead || !formData.uom) {
-      showAlert('error', 'Incomplete Form', 'Please select both a Group Head and a UOM.');
+    if (!formData.uom || formData.price === '') {
+      showAlert('error', 'Incomplete Form', 'Please provide UOM and Price.');
       return;
     }
 
     if (editingId) {
-      const updated = items.map(i => i.id === editingId ? { ...i, ...formData } : i);
+      const updated = items.map(i => i.id === editingId ? { ...i, ...formData, price: parseFloat(formData.price) || 0 } : i);
       saveMasterItems(updated);
       setItems(updated);
-      showAlert('success', 'Updated!', 'Item details have been modified successfully.');
+      showAlert('success', 'Updated!', 'Product details have been modified successfully.');
     } else {
       const newItem = {
         ...formData,
+        price: parseFloat(formData.price) || 0,
         id: generateId(),
         timestamp: new Date().toISOString(),
         inNo: `IN-${String(items.length + 1).padStart(3, '0')}`
       };
       saveMasterItem(newItem);
       setItems([...items, newItem]);
-      showAlert('success', 'Created!', 'New item has been added to the database.');
+      showAlert('success', 'Created!', 'New product has been added to the database.');
     }
     setShowModal(false);
-  };
-
-  const handleGroupHeadSubmit = (e) => {
-    e.preventDefault();
-    const validEntries = groupHeadEntries.filter(e => e.name.trim());
-    if (validEntries.length === 0) return;
-
-    const currentData = getGroupHeads();
-    const newItems = validEntries.map((entry, index) => ({
-      ...entry,
-      id: generateId(),
-      timestamp: new Date().toISOString(),
-      code: `GH-${String(currentData.length + index + 1).padStart(3, '0')}`
-    }));
-
-    const updated = [...currentData, ...newItems];
-    saveGroupHeads(updated);
-    refreshData();
-    setShowGroupHeadModal(false);
-    setGroupHeadEntries([{ name: '' }]);
-    showAlert('success', 'Success!', 'New Group Heads registered successfully.');
   };
 
   const handleUomSubmit = (e) => {
@@ -173,8 +146,8 @@ export default function Item({ searchQuery, triggerAdd }) {
       <td className="px-4 py-2 text-gray-600 whitespace-nowrap text-[11px] md:text-xs">{formatTimestamp(item.timestamp)}</td>
       <td className="px-4 py-2 text-gray-900 font-bold whitespace-nowrap text-[11px] md:text-xs">{item.inNo}</td>
       <td className="px-4 py-2 text-gray-700 whitespace-nowrap text-[11px] md:text-xs">{item.name}</td>
-      <td className="px-4 py-2 whitespace-nowrap"><span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[9px] font-bold uppercase border border-indigo-100">{item.groupHead}</span></td>
       <td className="px-4 py-2 whitespace-nowrap"><span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[9px] font-bold uppercase border border-amber-100">{item.uom}</span></td>
+      <td className="px-4 py-2 text-gray-700 whitespace-nowrap text-[11px] md:text-xs font-bold">₹{parseFloat(item.price || 0).toFixed(2)}</td>
     </tr>
   );
 
@@ -188,8 +161,8 @@ export default function Item({ searchQuery, triggerAdd }) {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-0.5"><p className="text-[9px] text-gray-400 font-bold uppercase">Group Head</p><p className="text-[11px] font-bold text-indigo-700 uppercase">{item.groupHead}</p></div>
-        <div className="space-y-0.5 text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">UOM</p><p className="text-[11px] font-bold text-amber-700 uppercase">{item.uom}</p></div>
+        <div className="space-y-0.5"><p className="text-[9px] text-gray-400 font-bold uppercase">UOM</p><p className="text-[11px] font-bold text-amber-700 uppercase">{item.uom}</p></div>
+        <div className="space-y-0.5 text-right"><p className="text-[9px] text-gray-400 font-bold uppercase">Price</p><p className="text-[11px] font-bold text-emerald-700">₹{parseFloat(item.price || 0).toFixed(2)}</p></div>
       </div>
       <div className="pt-2 border-t border-gray-50 flex justify-between">
         <span className="text-[10px] text-gray-400 font-medium">{formatTimestamp(item.timestamp)}</span>
@@ -199,8 +172,8 @@ export default function Item({ searchQuery, triggerAdd }) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <DataTable 
-        headers={headers} 
+      <DataTable
+        headers={headers}
         data={paginatedItems}
         renderRow={renderRow}
         renderCard={renderCard}
@@ -213,88 +186,51 @@ export default function Item({ searchQuery, triggerAdd }) {
         onItemsPerPageChange={(val) => { setItemsPerPage(val); setCurrentPage(1); }}
       />
 
-      <ModalAlert 
-        {...alertConfig} 
-        onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} 
+      <ModalAlert
+        {...alertConfig}
+        onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })}
       />
 
       <ModalForm
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editingId ? 'Edit Item' : 'New Master Item'}
+        title={editingId ? 'Edit Product' : 'New Product'}
         onSubmit={handleSubmit}
         submitText={editingId ? 'Update' : 'Save'}
       >
         <div className="space-y-2">
           <div className="space-y-1">
-            <label className="block text-[10px] md:text-[12px] text-gray-700 uppercase tracking-tight">Item Name *</label>
-            <input 
-              required 
-              type="text" 
-              value={formData.name} 
-              onChange={(e) => setFormData({...formData, name: e.target.value})} 
-              className="w-full border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]" 
-              placeholder="Enter item name" 
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-[10px] md:text-[12px] text-gray-700 uppercase tracking-tight">Group Head *</label>
-            <SearchableDropdown 
-              placeholder="Select Group Head" 
-              options={groupHeads.map(h => ({ value: h.name, label: h.name }))} 
-              value={formData.groupHead} 
-              onAdd={() => setShowGroupHeadModal(true)}
-              onChange={(val) => setFormData({...formData, groupHead: val})} 
+            <label className="block text-[10px] md:text-[12px] text-gray-700 uppercase tracking-tight">Product Name *</label>
+            <input
+              required
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              placeholder="Enter product name"
             />
           </div>
           <div className="space-y-1">
             <label className="block text-[10px] md:text-[12px] text-gray-700 uppercase tracking-tight">UOM *</label>
-            <SearchableDropdown 
-              placeholder="Select UOM" 
-              options={uoms.map(u => ({ value: u.name, label: u.name }))} 
-              value={formData.uom} 
+            <SearchableDropdown
+              placeholder="Select UOM"
+              options={uoms.map(u => ({ value: u.name, label: u.name }))}
+              value={formData.uom}
               onAdd={() => setShowUomModal(true)}
-              onChange={(val) => setFormData({...formData, uom: val})} 
+              onChange={(val) => setFormData({...formData, uom: val})}
             />
           </div>
-        </div>
-      </ModalForm>
-
-      <ModalForm
-        isOpen={showGroupHeadModal}
-        onClose={() => setShowGroupHeadModal(false)}
-        title="Quick Group Head Registration"
-        onSubmit={handleGroupHeadSubmit}
-        submitText="Save"
-        zIndex="z-[110]"
-      >
-        <div className="space-y-2">
-          {groupHeadEntries.map((entry, index) => (
-            <div key={index} className="flex gap-2 items-center">
-              <div className="flex-1 space-y-1">
-                {index === 0 && <label className="block text-[10px] font-medium text-gray-700 uppercase tracking-tight">Group Head Name *</label>}
-                <input 
-                  required 
-                  type="text" 
-                  value={entry.name} 
-                  onChange={(e) => {
-                    const newEntries = [...groupHeadEntries];
-                    newEntries[index].name = e.target.value;
-                    setGroupHeadEntries(newEntries);
-                  }} 
-                  className="w-full border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]" 
-                  placeholder="e.g. Raw Materials" 
-                />
-              </div>
-              {groupHeadEntries.length > 1 && (
-                <button type="button" onClick={() => setGroupHeadEntries(groupHeadEntries.filter((_, i) => i !== index))} className="mt-auto mb-1 text-red-400 hover:text-red-600 p-1 transition-colors"><Minus size={16}/></button>
-              )}
-            </div>
-          ))}
-          <div className="flex justify-end pt-1">
-            <button type="button" onClick={() => setGroupHeadEntries([...groupHeadEntries, { name: '' }])} className="flex items-center gap-1.5 text-[10px] font-black bg-indigo-600 text-white px-3 py-1.5 rounded shadow-sm hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-widest">
-              <Plus size={14}/> Add
-            </button>
+          <div className="space-y-1">
+            <label className="block text-[10px] md:text-[12px] text-gray-700 uppercase tracking-tight">Price *</label>
+            <input
+              required
+              type="number"
+              step="0.01"
+              value={formData.price}
+              onChange={(e) => setFormData({...formData, price: e.target.value})}
+              className="w-full border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              placeholder="0.00"
+            />
           </div>
         </div>
       </ModalForm>
@@ -312,17 +248,17 @@ export default function Item({ searchQuery, triggerAdd }) {
             <div key={index} className="flex gap-2 items-center">
               <div className="flex-1 space-y-1">
                 {index === 0 && <label className="block text-[10px] font-medium text-gray-700 uppercase tracking-tight">UOM Name *</label>}
-                <input 
-                  required 
-                  type="text" 
-                  value={entry.name} 
+                <input
+                  required
+                  type="text"
+                  value={entry.name}
                   onChange={(e) => {
                     const newEntries = [...uomEntries];
                     newEntries[index].name = e.target.value;
                     setUomEntries(newEntries);
-                  }} 
-                  className="w-full border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] uppercase" 
-                  placeholder="e.g. PCS" 
+                  }}
+                  className="w-full border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] uppercase"
+                  placeholder="e.g. PCS"
                 />
               </div>
               {uomEntries.length > 1 && (

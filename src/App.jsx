@@ -3,42 +3,21 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Settings from './pages/Settings';
+import Dashboard from './pages/Dashboard/Dashboard';
 import Master from './pages/Master/Master';
-import CreateIndent from './pages/CreateIndent/CreateIndent';
-import CreatedHistory from './pages/CreateIndent/CreatedHistory';
-import ApprovalIndent from './pages/ApprovalIndent/ApprovalIndent';
-import VendorRate from './pages/VendorRateUpdate/VendorRate';
-import TechnicalApproval from './pages/TechnicalApproval/TechnicalApproval';
-import ManagementApproval from './pages/ManagementApproval/ManagementApproval';
-import PendingPO from './pages/POtoBeCreate/PendingPO';
-import CreatePO from './pages/CreatePO/CreatePO';
-import RevicePO from './pages/CreatePO/RevicePO';
-import POHistory from './pages/POHistory/POHistory';
-import Lifting from './pages/Lifting/Lifting';
-import StoreIn from './pages/StoreIn/StoreIn';
-import HODCheck from './pages/HODCheck/HODCheck';
-import FrightPayment from './pages/FreightPayment/FrightPayment';
-import MakePayment from './pages/MakePayment/MakePayment';
-import RejectGRN from './pages/RejectForGRN/RejectGRN';
-import SendDebit from './pages/SendDebitNote/SendDebit';
-import AllPending from './pages/AuditData/AllPending';
-import Audit from './pages/AuditData/Audit';
-import Rectify from './pages/AuditData/Rectify';
-import Reaudit from './pages/AuditData/Reaudit';
-import Tallyentry from './pages/AuditData/Tallyentry';
-import AgainAudit from './pages/AuditData/AgainAudit';
-
-// New Modules
-import BillnotRecevied from './pages/BillNotReceived/BillnotRecevied';
-import PCDB from './pages/DBfoPC/PCDB';
-import StoreIssue from './pages/StoreData/StoreIssue';
-import StoreIssueReturn from './pages/StoreData/StoreIssueReturn';
-import StoreIssueDetails from './pages/StoreData/StoreIssueDetails';
-import Inventory from './pages/Inventory/Inventory';
-import Enquiry from './pages/Enquiry/Enquiry';
-import EnquiryHistory from './pages/Enquiry/EnquiryHistory';
-import Dasboard from './pages/Dashboard/Dasboard';
+import PurchaseOrder from './pages/ReceivedOrder/PurchaseOrder';
+import ReceivedOrder from './pages/ReceivedOrder/ReceivedOrder';
+import CheckAndValidation from './pages/CheckAndValidation/CheckAndValidation';
+import CheckForDelivery from './pages/CheckForDelivery/CheckForDelivery';
+import DispatchPlanning from './pages/DispatchPlanning/DispatchPlanning';
+import Packaging from './pages/Packaging/Packaging';
+import VehicleLogistic from './pages/VehicleLogistic/VehicleLogistic';
+import MakeCallan from './pages/MakeCallan/MakeCallan';
+import MakeInvoice from './pages/MakeInvoice/MakeInvoice';
+import ConfirmDelivery from './pages/ConfirmDelivery/ConfirmDelivery';
+import Payment from './pages/Payment/Payment';
+import Production from './pages/ProductionPlanning/Production';
+import Setting from './pages/Setting/Setting';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import { initializeStorage } from './utils/storageManager';
@@ -46,6 +25,19 @@ import { initializeStorage } from './utils/storageManager';
 function App() {
   useEffect(() => {
     initializeStorage();
+
+    // Prevent number inputs from changing value on mouse wheel scroll
+    const handleWheel = () => {
+      if (document.activeElement && document.activeElement.type === 'number') {
+        document.activeElement.blur();
+      }
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: true, capture: true });
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel, { capture: true });
+    };
   }, []);
 
   return (
@@ -61,52 +53,21 @@ function App() {
             </ProtectedRoute>
           }>
             <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dasboard />} />
-            <Route path="settings" element={<Settings />} />
+            <Route path="dashboard" element={<Dashboard />} />
             <Route path="master" element={<Master />} />
-            <Route path="create-indent" element={<CreateIndent />} />
-            <Route path="indent-history" element={<CreatedHistory />} />
-            <Route path="approval-indent" element={<ApprovalIndent />} />
-            <Route path="vendor-rate" element={<VendorRate />} />
-            <Route path="technical-approval" element={<TechnicalApproval />} />
-            <Route path="management-approval" element={<ManagementApproval />} />
-            <Route path="po-to-be-create" element={<PendingPO />} />
-            <Route path="create-po" element={<CreatePO />} />
-            <Route path="revice-po" element={<RevicePO />} />
-            <Route path="po-history" element={<POHistory />} />
-            <Route path="lifting" element={<Lifting />} />
-            <Route path="store-in" element={<StoreIn />} />
-            <Route path="hod-check" element={<HODCheck />} />
-            <Route path="freight-payment" element={<FrightPayment />} />
-            <Route path="make-payment" element={<MakePayment />} />
-            <Route path="reject-grn" element={<RejectGRN />} />
-            <Route path="send-debit" element={<SendDebit />} />
-            
-            {/* Audit Data Module Routes */}
-            <Route path="audit-all-pending" element={<AllPending />} />
-            <Route path="audit-stage" element={<Audit />} />
-            <Route path="rectify-stage" element={<Rectify />} />
-            <Route path="reaudit-stage" element={<Reaudit />} />
-            <Route path="tally-entry" element={<Tallyentry />} />
-            <Route path="again-audit" element={<AgainAudit />} />
-
-            {/* Bill Not Received Route */}
-            <Route path="bill-not-received" element={<BillnotRecevied />} />
-
-            {/* PC Dashboard Route */}
-            <Route path="pcdb" element={<PCDB />} />
-
-            {/* Store Data Routes */}
-            <Route path="store-issue" element={<StoreIssue />} />
-            <Route path="store-issue-return" element={<StoreIssueReturn />} />
-            <Route path="store-issue-details" element={<StoreIssueDetails />} />
-
-            {/* Inventory Route */}
-            <Route path="inventory" element={<Inventory />} />
-
-            {/* Enquiry Route */}
-            <Route path="enquiry" element={<Enquiry />} />
-            <Route path="enquiry-history" element={<EnquiryHistory />} />
+            <Route path="received-order" element={<PurchaseOrder />} />
+            <Route path="received-order-history" element={<ReceivedOrder />} />
+            <Route path="check-validation" element={<CheckAndValidation />} />
+            <Route path="check-delivery" element={<CheckForDelivery />} />
+            <Route path="dispatch-planning" element={<DispatchPlanning />} />
+            <Route path="packaging" element={<Packaging />} />
+            <Route path="vehicle-logistic" element={<VehicleLogistic />} />
+            <Route path="make-callan" element={<MakeCallan />} />
+            <Route path="make-invoice" element={<MakeInvoice />} />
+            <Route path="confirm-delivery" element={<ConfirmDelivery />} />
+            <Route path="payment" element={<Payment />} />
+            <Route path="production" element={<Production />} />
+            <Route path="setting" element={<Setting />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
