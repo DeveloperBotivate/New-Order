@@ -1,15 +1,24 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ShieldCheck, ArrowRightCircle, CheckCheck } from 'lucide-react';
+import { X, ShieldCheck, ArrowRightCircle } from 'lucide-react';
 import { updateReceivedOrder, getCheckedProductNumbers } from '../../utils/storageManager';
 import toast from 'react-hot-toast';
 
 export default function CheckForm({ order, onClose, onSuccess, isReadOnly = false }) {
+  const allSavedConditionsChecked = order.validationChecklist?.catalogPricing && 
+                                    order.validationChecklist?.gstCompliance && 
+                                    order.validationChecklist?.transportationType;
+
+  // In History (isReadOnly), always show saved checklist.
+  // In Pending, only prefill if the saved checklist is partially filled.
+  // If it's fully filled, it means a previous product was just validated, so start fresh for remaining products.
+  const shouldPrefill = isReadOnly || (order.validationChecklist && !allSavedConditionsChecked);
+
   const [checklist, setChecklist] = useState({
-    catalogPricing: order.validationChecklist?.catalogPricing || false,
-    gstCompliance: order.validationChecklist?.gstCompliance || false,
-    transportationType: order.validationChecklist?.transportationType || false,
-    remarks: order.validationChecklist?.remarks || ''
+    catalogPricing: shouldPrefill ? (order.validationChecklist?.catalogPricing || false) : false,
+    gstCompliance: shouldPrefill ? (order.validationChecklist?.gstCompliance || false) : false,
+    transportationType: shouldPrefill ? (order.validationChecklist?.transportationType || false) : false,
+    remarks: shouldPrefill ? (order.validationChecklist?.remarks || '') : ''
   });
 
   // Product numbers that have already been moved on to Check For Delivery in a previous pass
@@ -45,10 +54,32 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
     }
   };
 
+  const allConditionsChecked = checklist.catalogPricing && checklist.gstCompliance && checklist.transportationType;
+
   const handleSave = () => {
     const selectedList = Array.from(selected);
+
+    if (!allConditionsChecked) {
+      // If they haven't checked all boxes, save checklist progress anyway, but don't move products.
+      const updatedOrder = {
+        ...order,
+        validationChecklist: checklist
+      };
+      updateReceivedOrder(updatedOrder);
+      toast.success('Checklist progress saved. All 3 conditions must be met to move products.');
+      if (onSuccess) onSuccess();
+      return;
+    }
+
     if (selectedList.length === 0) {
-      toast.error('Select at least one product row to move to the next step.');
+      // Just save checklist progress
+      const updatedOrder = {
+        ...order,
+        validationChecklist: checklist
+      };
+      updateReceivedOrder(updatedOrder);
+      toast.success('Validation checklist progress saved.');
+      if (onSuccess) onSuccess();
       return;
     }
 
@@ -174,27 +205,23 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {productItems.map((prod, idx) => {
+                    {/* Live view only shows what's still pending — already-moved products are
+                        tracked by the badge above, not re-shown here. Read-only history view
+                        (viewing a completed record) still shows every product. */}
+                    {productItems.filter(p => isReadOnly ? (order.checkedProductNumbers || []).includes(p.productNumber) : !movedProductNumbers.has(p.productNumber)).map((prod, idx) => {
                       const basic = (parseFloat(prod.qty) || 0) * (parseFloat(prod.priceRate) || 0);
                       const gstPerc = parseFloat(prod.gstPercent || order.globalGstPercent || '0');
                       const gstValue = basic * (gstPerc / 100);
-                      const isMoved = movedProductNumbers.has(prod.productNumber);
                       return (
-                        <tr key={idx} className={`hover:bg-gray-50/50 ${isMoved ? 'opacity-60' : ''}`}>
+                        <tr key={idx} className="hover:bg-gray-50/50">
                           {!isReadOnly && (
                             <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                              {isMoved ? (
-                                <span title="Already moved to next step" className="inline-flex items-center justify-center text-emerald-500">
-                                  <CheckCheck size={16} />
-                                </span>
-                              ) : (
-                                <input
-                                  type="checkbox"
-                                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                                  checked={selected.has(prod.productNumber)}
-                                  onChange={() => toggleSelect(prod.productNumber)}
-                                />
-                              )}
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                                checked={selected.has(prod.productNumber)}
+                                onChange={() => toggleSelect(prod.productNumber)}
+                              />
                             </td>
                           )}
                           <td className="px-4 py-3 text-xs text-indigo-600 font-bold">{prod.productNumber}</td>
@@ -296,10 +323,10 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
           {!isReadOnly && (
             <button
               onClick={handleSave}
-              disabled={selected.size === 0}
-              className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 shadow-sm"
+              className={`px-5 py-2 text-sm font-bold text-white rounded-lg transition-colors flex items-center gap-2 shadow-sm ${(selected.size > 0 && allConditionsChecked) ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
             >
-              <ArrowRightCircle size={16} /> Move Selected to Next Step
+              <ArrowRightCircle size={16} /> 
+              {(selected.size > 0 && allConditionsChecked) ? 'Move Selected to Next Step' : 'Save Checklist Progress'}
             </button>
           )}
         </div>

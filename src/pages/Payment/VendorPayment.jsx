@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Calendar, RotateCcw } from 'lucide-react';
+import { Search, Filter, Calendar, RotateCcw, CreditCard } from 'lucide-react';
 import { getReceivedOrders, getPaymentHistory, getDivisions, getInvoiceHistory, getConfirmDeliveryHistory } from '../../utils/storageManager';
 import PendingVendor from './PendingVendor';
 import HistoryVendor from './HistoryVendor';
+import BatchVendorPayment from './BatchVendorPayment';
 import { TabSwitcher } from '../../components/StandardButtons';
 import SearchableDropdown from '../../components/SearchableDropdown';
 
 export default function VendorPayment() {
   const [activeTab, setActiveTab] = useState('pending');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [showBatchPayment, setShowBatchPayment] = useState(false);
 
   const [filters, setFilters] = useState({
     searchQuery: '',
@@ -70,23 +72,12 @@ export default function VendorPayment() {
       });
       if (!orderFullyDelivered) return false;
 
-      const advancePayments = paymentHistory.filter(
-        p => p.orderId === order.orderId && p.paymentType === 'Advance'
-      );
-      const totalAdvancePaid = advancePayments.reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
-      const requiredAdvance = parseFloat(order.advanceAmount || 0);
-
-      // If advance payment is required, it must be fully paid before showing in Vendor Payment
-      if (order.advancePayment === 'Yes' && totalAdvancePaid < requiredAdvance) {
-        return false;
-      }
-
       const vendorPayments = paymentHistory.filter(
         p => p.orderId === order.orderId && p.paymentType === 'Vendor'
       );
       const totalVendorPaid = vendorPayments.reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
 
-      const remainingBalance = order.effectivePOValue - totalAdvancePaid - totalVendorPaid;
+      const remainingBalance = order.effectivePOValue - totalVendorPaid;
 
       return remainingBalance > 0;
     }).map(order => {
@@ -95,12 +86,10 @@ export default function VendorPayment() {
       
       const totalAdvancePaid = advancePayments.reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
       const totalVendorPaid = vendorPayments.reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
-      const totalPaid = totalAdvancePaid + totalVendorPaid;
-      const pending = order.effectivePOValue - totalPaid;
+      const pending = order.effectivePOValue - totalVendorPaid;
 
       return {
         ...order,
-        totalPaid,
         totalAdvancePaid,
         totalVendorPaid,
         pendingAmount: pending
@@ -120,9 +109,11 @@ export default function VendorPayment() {
         partyName: order.partyName || '-',
         division: order.division || '-',
         poNumber: order.poNumber || '-',
+        expectedDeliveryDate: order.expectedDeliveryDate || '-',
         poImage: order.poImage || null,
         invoiceNumber: latestInvoice.invoiceNumber || '-',
         invoiceDate: latestInvoice.invoiceDate || '-',
+        invoiceAmount: latestInvoice.invoiceAmount || null,
         invoiceImage: latestInvoice.invoiceImage || null
       };
     }).sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
@@ -146,6 +137,13 @@ export default function VendorPayment() {
             { id: 'history', label: 'History', count: historyVendorPayments.length }
           ]}
         />
+
+        <button
+          onClick={() => setShowBatchPayment(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-colors shadow-sm shrink-0 h-[32px] md:h-[38px]"
+        >
+          <CreditCard size={16} /> Payment
+        </button>
 
         <div className="flex flex-col lg:flex-row w-full gap-2 lg:gap-3 items-center flex-1">
           <div className="flex items-center gap-2 w-full lg:w-auto lg:flex-[1.5]">
@@ -210,6 +208,17 @@ export default function VendorPayment() {
           />
         )}
       </div>
+
+      {showBatchPayment && (
+        <BatchVendorPayment
+          pendingOrders={pendingVendorOrders}
+          onClose={() => setShowBatchPayment(false)}
+          onSuccess={() => {
+            setShowBatchPayment(false);
+            loadData();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -35,13 +35,13 @@ export default function CheckForDelivery() {
   // and still have pending delivery quantity
   const pendingItems = useMemo(() => {
     return orders.filter(order => {
+      // Must be completely checked (all products validated) to appear here
+      if (!order.isChecked) return false;
       const checkedProductNumbers = getCheckedProductNumbers(order);
-      if (checkedProductNumbers.length === 0) return false;
       return order.items?.some((item, idx) => {
         const productNumber = `${order.orderId}-${String(idx + 1).padStart(2, '0')}`;
         if (!checkedProductNumbers.includes(productNumber)) return false;
         const historyForProduct = history.filter(h => h.orderId === order.orderId && h.productNumber === productNumber);
-
         const hasNoStock = historyForProduct.some(h => h.stockStatus === 'No Stock');
         if (hasNoStock) return false;
 

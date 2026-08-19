@@ -107,7 +107,7 @@ export default function CheckHistory({ data, filters, refresh }) {
           <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{item.transportingType || '-'}</td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{item.globalGstPercent || '0'}%</td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-700 whitespace-nowrap">
-            <span className="bg-indigo-50 font-bold rounded-lg px-2 py-1">{item.items?.length || 0}</span>
+            <span className="bg-indigo-50 font-bold rounded-lg px-2 py-1">{item.checkedProductNumbers?.length || 0}</span>
           </td>
           <td className="px-4 py-3 text-center text-[11px] text-emerald-600 font-bold whitespace-nowrap">₹{item.totalPOValue?.toFixed(2)}</td>
           <td className="px-4 py-3 text-center whitespace-nowrap">

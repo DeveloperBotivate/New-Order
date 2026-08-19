@@ -61,7 +61,6 @@ export default function PendingVendor({ data, filters, onSuccess }) {
       referenceNo: formData.referenceNo,
       remarks: formData.remarks,
       receiptImage: formData.receiptImage,
-      billDate: formData.billDate,
     };
     
     savePaymentTransaction([paymentRecord]);

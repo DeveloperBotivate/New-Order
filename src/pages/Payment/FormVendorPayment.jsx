@@ -8,7 +8,6 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
     amountPaid: order.pendingAmount || '',
     paymentDate: new Date().toISOString().split('T')[0],
-    billDate: '',
     paymentMode: 'Bank Transfer',
     referenceNo: '',
     remarks: '',
@@ -26,7 +25,6 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
       newErrors.amountPaid = 'Amount cannot exceed the pending balance';
     }
     if (!formData.paymentDate) newErrors.paymentDate = 'Payment date is required';
-    if (!formData.billDate) newErrors.billDate = 'Bill date is required';
     if (!formData.paymentMode) newErrors.paymentMode = 'Payment mode is required';
     if (!formData.referenceNo) newErrors.referenceNo = 'Reference No / UTR is required';
     
@@ -139,19 +137,6 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
                   className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium ${errors.paymentDate ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50/50'}`}
                 />
                 {errors.paymentDate && <p className="text-[10px] text-red-500 mt-1">{errors.paymentDate}</p>}
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                  Bill Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={formData.billDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, billDate: e.target.value }))}
-                  className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium ${errors.billDate ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50/50'}`}
-                />
-                {errors.billDate && <p className="text-[10px] text-red-500 mt-1">{errors.billDate}</p>}
               </div>
 
               <div>

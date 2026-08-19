@@ -74,12 +74,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       const receivedOrders = getReceivedOrders() || [];
       const checkValidationCount = receivedOrders.filter(o => !o.isChecked).length;
 
-      // 6. Check for Delivery: orders with at least one item that passed Check & Validation
+      // 6. Check for Delivery: orders where all items passed Check & Validation
       // (per product line) where pendingQty > 0 and no 'No Stock' status
       const deliveryHistory = getDeliveryHistory() || [];
       const checkDeliveryCount = receivedOrders.filter(order => {
+        if (!order.isChecked) return false;
         const checkedProductNumbers = getCheckedProductNumbers(order);
-        if (checkedProductNumbers.length === 0) return false;
         return order.items?.some((item, idx) => {
           const productNumber = `${order.orderId}-${String(idx + 1).padStart(2, '0')}`;
           if (!checkedProductNumbers.includes(productNumber)) return false;
@@ -211,17 +211,11 @@ const Sidebar = ({ isOpen, onClose }) => {
         });
         const effectivePOValue = totalInvoicedValue > 0 ? totalInvoicedValue : parseFloat(order.totalPOValue || 0);
 
-        const totalAdvancePaid = paymentHistory
-          .filter(p => p.orderId === order.orderId && p.paymentType === 'Advance')
-          .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
-        const requiredAdvance = parseFloat(order.advanceAmount || 0);
-        if (order.advancePayment === 'Yes' && totalAdvancePaid < requiredAdvance) return false;
-
         const totalVendorPaid = paymentHistory
           .filter(p => p.orderId === order.orderId && p.paymentType === 'Vendor')
           .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
 
-        return (effectivePOValue - totalAdvancePaid - totalVendorPaid) > 0;
+        return (effectivePOValue - totalVendorPaid) > 0;
       }).length;
 
       const freightOrderIds = new Set();
