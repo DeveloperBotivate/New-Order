@@ -58,9 +58,18 @@ export default function VendorPayment() {
 
       // If an invoice exists, use invoiced value. Otherwise fallback to original PO value.
       const effectivePOValue = totalInvoicedValue > 0 ? totalInvoicedValue : parseFloat(order.totalPOValue || 0);
-      
-      return { ...order, effectivePOValue, invoiceDate, invoiceNumber, invoiceImage };
+
+      return { ...order, orderInvoices, effectivePOValue, invoiceDate, invoiceNumber, invoiceImage };
     }).filter(order => {
+      // Vendor Payment only becomes payable once the order has actually reached the
+      // customer — i.e. every invoiced item is confirmed 'Delivered'. An order with no
+      // invoice yet, or with any item still short of that, isn't ready for Vendor Payment.
+      const orderFullyDelivered = order.orderInvoices.length > 0 && order.orderInvoices.every(invoiceItem => {
+        const cd = confirmHistory.find(ch => ch.dispatchId === invoiceItem.dispatchId);
+        return cd && cd.deliveryStatus === 'Delivered';
+      });
+      if (!orderFullyDelivered) return false;
+
       const advancePayments = paymentHistory.filter(
         p => p.orderId === order.orderId && p.paymentType === 'Advance'
       );
@@ -72,14 +81,11 @@ export default function VendorPayment() {
         return false;
       }
 
-      // Note: We deliberately do not check delivery status here, 
-      // so orders appear as soon as Advance Payment is fulfilled, 
-      // matching the Sidebar logic and user flow expectations.
       const vendorPayments = paymentHistory.filter(
         p => p.orderId === order.orderId && p.paymentType === 'Vendor'
       );
       const totalVendorPaid = vendorPayments.reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
-      
+
       const remainingBalance = order.effectivePOValue - totalAdvancePaid - totalVendorPaid;
 
       return remainingBalance > 0;

@@ -47,7 +47,7 @@ export default function PendingVendor({ data, filters, onSuccess }) {
     { label: "Action", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     { label: "Order ID", className: "sticky left-[120px] bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     "Division", "PO Number", "PO Date", "Party Name", "Delivery Date", "Transport", "Total Product", 
-    "PO Value", "Advance Paid", "Vendor Paid", "Invoice Number", "Invoice Date", "PO Copy", "Invoice Copy",
+    "Invoice Value", "Advance Paid", "Vendor Paid", "Invoice Number", "Invoice Date", "PO Copy", "Invoice Copy",
     { label: "Pending Balance", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[140px]" }
   ];
 
@@ -80,7 +80,7 @@ export default function PendingVendor({ data, filters, onSuccess }) {
       <div className="text-sm text-gray-700 font-medium mb-3">{order.partyName}</div>
       <div className="grid grid-cols-2 gap-2 mb-4">
         <div>
-          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Total PO Value</span>
+          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Invoice Value</span>
           <span className="text-xs font-bold text-gray-700">₹{order.effectivePOValue?.toFixed(2)}</span>
         </div>
         <div>

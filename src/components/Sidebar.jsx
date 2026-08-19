@@ -189,8 +189,18 @@ const Sidebar = ({ isOpen, onClose }) => {
         return totalPaid < requiredAdvance;
       }).length;
 
+      // Mirrors VendorPayment.jsx's pendingVendorOrders exactly: only counts once every
+      // invoiced item on the order is confirmed 'Delivered', using the invoiced value
+      // (not the raw PO value) once an invoice exists.
       const pendingVendorCount = receivedOrders.filter(order => {
         const orderInvoices = invoiceHistory.filter(inv => inv.orderId === order.orderId);
+
+        const orderFullyDelivered = orderInvoices.length > 0 && orderInvoices.every(invoiceItem => {
+          const cd = confirmHistory.find(ch => ch.dispatchId === invoiceItem.dispatchId);
+          return cd && cd.deliveryStatus === 'Delivered';
+        });
+        if (!orderFullyDelivered) return false;
+
         const seen = new Set();
         let totalInvoicedValue = 0;
         orderInvoices.forEach(inv => {
