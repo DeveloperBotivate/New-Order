@@ -279,12 +279,9 @@ export const saveToStorage = (key, data) => {
     if (!shrunkAny) continue; // this pass found nothing new to strip, escalate further
 
     if (tryWrite(key, data)) {
-      toast.success(
-        keepRecent === 0
-          ? 'Storage was full — cleared older uploaded images across the app to make room for this save.'
-          : 'Freed up space by clearing older uploaded images to make room for this save.',
-        { duration: 7000 }
-      );
+      if (keepRecent !== 0) {
+        toast.success('Freed up space by clearing older uploaded images to make room for this save.', { duration: 7000 });
+      }
       notifyDataChanged(key);
       return;
     }
