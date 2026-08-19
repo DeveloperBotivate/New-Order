@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, X, FileImage } from 'lucide-react';
 import DataTable from '../../components/DataTable';
-import { getConfirmDeliveryHistory } from '../../utils/storageManager';
+import { getConfirmDeliveryHistory, getLogisticHistory } from '../../utils/storageManager';
 import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function HistoryDelivery({ data, filters }) {
@@ -50,6 +50,7 @@ export default function HistoryDelivery({ data, filters }) {
     { label: "Order ID", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[110px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name",
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount",
+    "Transporter Name", "Vehicle Number", "Driver Name", "Driver Number",
     "Invoice Number", "Invoice Date", "Invoice Amount", "Status", "Remarks", "Invoice Copy",
     { label: "Delivery Attachment", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
   ];
@@ -84,6 +85,12 @@ export default function HistoryDelivery({ data, filters }) {
     const invoiceImage = orderConfirmItems[0]?.invoiceImage;
     const deliveryImage = orderConfirmItems[0]?.deliveryImage;
 
+    const allLogistic = getLogisticHistory() || [];
+    // Get the logistic record for this order (we can use the first confirm item's dispatch ID if available, or just the orderId)
+    const logisticRecord = allLogistic.find(lh => 
+      orderConfirmItems.some(ci => ci.dispatchId === lh.dispatchId)
+    ) || allLogistic.find(lh => lh.orderId === order.orderId) || {};
+
     return (
       <React.Fragment key={order.orderId}>
         <tr
@@ -113,6 +120,11 @@ export default function HistoryDelivery({ data, filters }) {
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{order.advancePayment || 'No'}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-green-600 whitespace-nowrap">₹{order.advanceAmount || '0'}</td>
           
+          <td className="px-3 py-3 text-center text-[11px] text-gray-800 whitespace-nowrap">{logisticRecord.transportAgency || '-'}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-800 whitespace-nowrap">{logisticRecord.vehicleNo || '-'}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-800 whitespace-nowrap">{logisticRecord.driverName || '-'}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-800 whitespace-nowrap">{logisticRecord.driverMobile || '-'}</td>
+
           <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{invoiceNo}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-gray-800 whitespace-nowrap">{invoiceDate}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-green-600 whitespace-nowrap">₹{invoiceAmount}</td>

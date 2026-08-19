@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Calendar, RotateCcw } from 'lucide-react';
-import { getReceivedOrders, getPaymentHistory, getDivisions, getInvoiceHistory } from '../../utils/storageManager';
+import { getReceivedOrders, getPaymentHistory, getDivisions, getInvoiceHistory, getConfirmDeliveryHistory } from '../../utils/storageManager';
 import PendingVendor from './PendingVendor';
 import HistoryVendor from './HistoryVendor';
 import { TabSwitcher } from '../../components/StandardButtons';
@@ -21,12 +21,14 @@ export default function VendorPayment() {
   const [divisions, setDivisions] = useState([]);
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [invoiceHistory, setInvoiceHistory] = useState([]);
+  const [confirmHistory, setConfirmHistory] = useState([]);
 
   const loadData = () => {
     setOrders(getReceivedOrders() || []);
     setDivisions(getDivisions() || []);
     setPaymentHistory(getPaymentHistory() || []);
     setInvoiceHistory(getInvoiceHistory() || []);
+    setConfirmHistory(getConfirmDeliveryHistory() || []);
   };
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export default function VendorPayment() {
       }
       const totalInvoicedValue = uniqueInvoices.reduce((sum, val) => sum + val, 0);
 
-      // If an invoice exists, strictly use invoiced value. Otherwise fallback to original PO value.
+      // If an invoice exists, use invoiced value. Otherwise fallback to original PO value.
       const effectivePOValue = totalInvoicedValue > 0 ? totalInvoicedValue : parseFloat(order.totalPOValue || 0);
       
       return { ...order, effectivePOValue, invoiceDate, invoiceNumber, invoiceImage };
@@ -70,6 +72,9 @@ export default function VendorPayment() {
         return false;
       }
 
+      // Note: We deliberately do not check delivery status here, 
+      // so orders appear as soon as Advance Payment is fulfilled, 
+      // matching the Sidebar logic and user flow expectations.
       const vendorPayments = paymentHistory.filter(
         p => p.orderId === order.orderId && p.paymentType === 'Vendor'
       );
@@ -95,7 +100,7 @@ export default function VendorPayment() {
         pendingAmount: pending
       };
     });
-  }, [orders, paymentHistory, invoiceHistory]);
+  }, [orders, paymentHistory, invoiceHistory, confirmHistory]);
 
   const historyVendorPayments = useMemo(() => {
     const vendors = paymentHistory.filter(p => p.paymentType === 'Vendor');

@@ -217,7 +217,7 @@ export default function PendingCallan({ data, filters, onSuccess }) {
                       {pendingItems.length === 0 && (
                         <tr>
                           <td colSpan="12" className="px-4 py-8 text-center text-gray-400 text-sm">
-                            No items ready for Callan.
+                            No items ready for Challan.
                           </td>
                         </tr>
                       )}

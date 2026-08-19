@@ -1,6 +1,17 @@
 // Storage Manager - Handle all localStorage operations
 import toast from 'react-hot-toast';
 
+// Fired on the `window` right after any successful write via saveToStorage().
+// The native 'storage' event only reaches OTHER tabs of the same browser, never
+// the tab that made the change — this custom event covers that same-tab case so
+// listeners (e.g. the sidebar's pending counts) can refresh instantly instead of
+// waiting for their next poll. Cross-device sync is a separate, unsolved problem:
+// localStorage never leaves this one browser, so this only helps within it.
+export const DATA_CHANGED_EVENT = 'o2d:data-changed';
+const notifyDataChanged = (key) => {
+  window.dispatchEvent(new CustomEvent(DATA_CHANGED_EVENT, { detail: { key } }));
+};
+
 const STORAGE_KEYS = {
   USERS: 'pcb_users',
   CREDITS: 'pcb_credits',
@@ -245,13 +256,17 @@ const tryWrite = (key, data) => {
 //      escalating to 0 guarantees forward progress instead of quietly giving up.
 // Only if every tier fails does it surface an error asking for a manual clear.
 export const saveToStorage = (key, data) => {
-  if (tryWrite(key, data)) return;
+  if (tryWrite(key, data)) {
+    notifyDataChanged(key);
+    return;
+  }
 
   console.warn(`Storage quota exceeded while saving "${key}" — attempting automatic cleanup.`);
 
   const freedDeadKeys = purgeDeadLegacyKeys();
   if (tryWrite(key, data)) {
     if (freedDeadKeys) toast.success('Freed up storage space automatically.', { duration: 3000 });
+    notifyDataChanged(key);
     return;
   }
 
@@ -270,6 +285,7 @@ export const saveToStorage = (key, data) => {
           : 'Freed up space by clearing older uploaded images to make room for this save.',
         { duration: 7000 }
       );
+      notifyDataChanged(key);
       return;
     }
 
@@ -290,6 +306,7 @@ export const saveToStorage = (key, data) => {
         });
         if (dataStripped && tryWrite(key, data)) {
           toast.error('The image you uploaded was too large and had to be dropped to save the record.', { duration: 7000 });
+          notifyDataChanged(key);
           return;
         }
       }

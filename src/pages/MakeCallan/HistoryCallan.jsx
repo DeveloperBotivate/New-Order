@@ -52,8 +52,8 @@ export default function HistoryCallan({ data, filters }) {
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name", 
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", 
     "Advance Payment", "Advance Amount", 
-    "Callan No", "Remarks",
-    { label: "Callan Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
+    "Challan No", "Remarks",
+    { label: "Challan Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
   ];
 
   const renderCard = (order) => (
@@ -217,7 +217,7 @@ export default function HistoryCallan({ data, filters }) {
             {isPdfDataUrl(viewImage) ? (
               <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
             ) : (
-              <img src={viewImage} alt="Callan Document" className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
+              <img src={viewImage} alt="Challan Document" className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
             )}
           </div>
         </div>

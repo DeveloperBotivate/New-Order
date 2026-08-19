@@ -36,7 +36,7 @@ export default function VehicleLogistic() {
 
   // Filter criteria for transport type — plain 'Ex Factory' orders (buyer arranges
   // their own pickup) skip Vehicle Logistic entirely and go straight from Packaging
-  // to Make Callan; only these two types need a vehicle/driver/LR assigned here.
+  // to Make Challan; only these two types need a vehicle/driver/LR assigned here.
   const isValidTransportType = (type) => {
     return ['FOR', 'Ex Factory Transpoter Office'].includes(type);
   };

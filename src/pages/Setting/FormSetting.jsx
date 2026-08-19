@@ -11,7 +11,7 @@ const AVAILABLE_PAGES = [
   { path: '/dispatch-planning', label: 'Dispatch Planning' },
   { path: '/packaging', label: 'Packaging' },
   { path: '/vehicle-logistic', label: 'Vehicle Logistic' },
-  { path: '/make-callan', label: 'Make Callan' },
+  { path: '/make-callan', label: 'Make Challan' },
   { path: '/make-invoice', label: 'Make Invoice' },
   { path: '/confirm-delivery', label: 'Confirm Delivery' },
   { path: '/payment', label: 'Payments' },

@@ -62,11 +62,11 @@ export default function FormCallan({ order, onClose, onSuccess }) {
   const handleSave = () => {
     const selectedItems = items.filter(i => i._selected);
     if (selectedItems.length === 0) {
-      return toast.error('Please select at least one item for the Callan');
+      return toast.error('Please select at least one item for the Challan');
     }
 
     if (!callanNo.trim()) {
-      return toast.error('Please enter the Callan No');
+      return toast.error('Please enter the Challan No');
     }
 
     const payload = selectedItems.map(item => ({
@@ -77,7 +77,7 @@ export default function FormCallan({ order, onClose, onSuccess }) {
     }));
 
     saveCallanTransaction(payload);
-    toast.success('Callan generated successfully!');
+    toast.success('Challan generated successfully!');
     if (onSuccess) onSuccess();
   };
 
@@ -95,7 +95,7 @@ export default function FormCallan({ order, onClose, onSuccess }) {
               <FileText size={20} className="text-indigo-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900 leading-tight">Generate Callan</h2>
+              <h2 className="text-base font-bold text-gray-900 leading-tight">Generate Challan</h2>
               <p className="text-[11px] text-gray-500 font-medium leading-tight">Order: {order.orderId}</p>
             </div>
           </div>
@@ -156,7 +156,7 @@ export default function FormCallan({ order, onClose, onSuccess }) {
 
           {/* Items Table */}
           <div>
-            <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Callan Items</h3>
+            <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Challan Items</h3>
             <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto shadow-sm">
               <table className="w-full text-left border-collapse min-w-[1200px]">
                 <thead>
@@ -223,7 +223,7 @@ export default function FormCallan({ order, onClose, onSuccess }) {
                   {items.length === 0 && (
                     <tr>
                       <td colSpan="12" className="px-3 py-8 text-center text-gray-400 text-sm">
-                        No pending items available for Callan.
+                        No pending items available for Challan.
                       </td>
                     </tr>
                   )}
@@ -232,21 +232,21 @@ export default function FormCallan({ order, onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* Callan Inputs */}
+          {/* Challan Inputs */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-5 rounded-xl border border-indigo-100 shadow-sm">
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Callan No *</label>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Challan No *</label>
               <input
                 type="text"
                 className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
-                placeholder="Enter Callan No"
+                placeholder="Enter Challan No"
                 value={callanNo}
                 onChange={(e) => setCallanNo(e.target.value)}
               />
             </div>
-            
+
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Callan Attachment</label>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Challan Attachment</label>
               <div className="relative group cursor-pointer">
                 <input
                   type="file"
@@ -290,7 +290,7 @@ export default function FormCallan({ order, onClose, onSuccess }) {
             disabled={items.filter(i => i._selected).length === 0}
             className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <CheckCircle size={16} /> Save Callan
+            <CheckCircle size={16} /> Save Challan
           </button>
         </div>
       </div>

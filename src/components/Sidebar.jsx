@@ -40,7 +40,7 @@ import {
   LayoutDashboard
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { getIndents, getReceivedOrders, getDeliveryHistory, getDispatchHistory, getPackagingHistory, getLogisticHistory, getCallanHistory, getInvoiceHistory, getConfirmDeliveryHistory, getCheckedProductNumbers, getPaymentHistory } from '../utils/storageManager';
+import { getIndents, getReceivedOrders, getDeliveryHistory, getDispatchHistory, getPackagingHistory, getLogisticHistory, getCallanHistory, getInvoiceHistory, getConfirmDeliveryHistory, getCheckedProductNumbers, getPaymentHistory, DATA_CHANGED_EVENT } from '../utils/storageManager';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
@@ -246,11 +246,18 @@ const Sidebar = ({ isOpen, onClose }) => {
     };
 
     refreshCounts();
-    const interval = setInterval(refreshCounts, 15000); // More frequent refresh
+    const interval = setInterval(refreshCounts, 15000); // Fallback poll, in case a listener is ever missed
     window.addEventListener('focus', refreshCounts);
+    // 'storage' fires in OTHER tabs of this browser the instant one tab writes to localStorage.
+    // DATA_CHANGED_EVENT fires in THIS tab right after any save — 'storage' never reaches the
+    // tab that made the change, so both are needed to make same-browser updates instant.
+    window.addEventListener('storage', refreshCounts);
+    window.addEventListener(DATA_CHANGED_EVENT, refreshCounts);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', refreshCounts);
+      window.removeEventListener('storage', refreshCounts);
+      window.removeEventListener(DATA_CHANGED_EVENT, refreshCounts);
     };
   }, []);
 
@@ -268,7 +275,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/dispatch-planning',   icon: Truck,          label: 'Dispatch Planning', count: counts.dispatch },
     { path: '/packaging',           icon: Package,        label: 'Packaging', count: counts.packaging },
     { path: '/vehicle-logistic',    icon: Truck,          label: 'Vehicle Logistic', count: counts.logistic },
-    { path: '/make-callan',         icon: FileText,       label: 'Make Callan', count: counts.callan },
+    { path: '/make-callan',         icon: FileText,       label: 'Make Challan', count: counts.callan },
     { path: '/make-invoice',        icon: Receipt,        label: 'Make Invoice', count: counts.invoice },
     { path: '/confirm-delivery',    icon: CheckCircle,    label: 'Confirm Delivery', count: counts.confirmDelivery },
     { path: '/payment',             icon: Coins,          label: 'Payments', count: counts.payment },
@@ -285,7 +292,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/dispatch-planning', icon: Truck, label: 'Dispatch Planning', count: counts.dispatch },
     { path: '/packaging', icon: Package, label: 'Packaging', count: counts.packaging },
     { path: '/vehicle-logistic', icon: Truck, label: 'Vehicle Logistic', count: counts.logistic },
-    { path: '/make-callan', icon: FileText, label: 'Make Callan', count: counts.callan },
+    { path: '/make-callan', icon: FileText, label: 'Make Challan', count: counts.callan },
     { path: '/make-invoice', icon: Receipt, label: 'Make Invoice', count: counts.invoice },
     { path: '/confirm-delivery', icon: CheckCircle, label: 'Confirm Delivery', count: counts.confirmDelivery },
     { path: '/payment', icon: Coins, label: 'Payments', count: counts.payment },

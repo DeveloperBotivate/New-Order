@@ -408,7 +408,7 @@ export default function Dashboard() {
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
-              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Make Callan</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Make Challan</span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {Math.max(0, stats.totalOrders - stats.callansGenerated)}</span>
                 <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.callansGenerated}</span>
@@ -658,12 +658,12 @@ export default function Dashboard() {
           </table>
         </SectionCard>
 
-        <SectionCard title="Recent Challans (Callan)" icon={Receipt} className="h-[340px]">
+        <SectionCard title="Recent Challans" icon={Receipt} className="h-[340px]">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
               <tr className="text-[10px] text-gray-500 uppercase tracking-wider">
                 <th className="px-3 py-2 font-bold">Order ID</th>
-                <th className="px-3 py-2 font-bold">Callan No</th>
+                <th className="px-3 py-2 font-bold">Challan No</th>
                 <th className="px-3 py-2 font-bold">Party Name</th>
                 <th className="px-3 py-2 font-bold">Remarks</th>
               </tr>

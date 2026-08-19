@@ -59,8 +59,8 @@ export default function PendingInvoice({ data, filters, onSuccess }) {
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name",
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount",
     "Transport Name", "Vehicle Plate Number", "Driver Full Name", "Driver Mobile Contact",
-    "Callan No", "Remarks",
-    { label: "Callan Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
+    "Challan No", "Remarks",
+    { label: "Challan Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
   ];
 
   const renderCard = (order) => (
