@@ -315,7 +315,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
                 <Users size={20} className="text-white" />
               </div>
-              <span className="text-xl font-bold text-indigo-600 tracking-tight">Neutech</span>
+              <span className="text-xl font-bold text-indigo-600 tracking-tight">Nutech</span>
             </div>
             <button onClick={onClose} className="lg:hidden p-2 hover:bg-indigo-100/50 rounded-lg">
               <X size={20} className="text-indigo-600" />
