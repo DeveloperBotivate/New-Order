@@ -29,10 +29,11 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
     productNumber: `${order.orderId}-${String(idx + 1).padStart(2, '0')}`
   }));
 
-  // Rows still pending validation are selected by default, matching the old "move everything" behavior
-  const [selected, setSelected] = useState(
-    () => new Set(productItems.filter(p => !movedProductNumbers.has(p.productNumber)).map(p => p.productNumber))
-  );
+  // Nothing is pre-selected — the user picks which pending product(s) they're
+  // actually validating right now. Auto-selecting everything meant reopening the
+  // form after a partial save (checklist saved, nothing moved yet) would show
+  // every remaining product re-checked, not just the one originally chosen.
+  const [selected, setSelected] = useState(() => new Set());
 
   const pendingItems = productItems.filter(p => !movedProductNumbers.has(p.productNumber));
   const allPendingSelected = pendingItems.length > 0 && pendingItems.every(p => selected.has(p.productNumber));

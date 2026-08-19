@@ -49,13 +49,13 @@ export default function MakeCallan() {
       // A packaged item is ready for Callan if:
       // 1. It went through Vehicle Logistic (matched by dispatchId)
       // OR
-      // 2. The order's Transporting Type is 'Ex Factory' (buyer arranges their own pickup)
+      // 2. The order's Transporting Type is 'FOR' (goes directly to Challan, skipping Vehicle Logistic)
       const tType = (order.transportingType || '').toLowerCase().replace('-', ' ').trim();
-      const isExFactory = tType === 'ex factory';
+      const isFOR = tType === 'for';
 
       const itemsReadyForCallan = orderPackaged.filter(packageItem => {
         const inLogistic = orderLogistic.some(lh => lh.dispatchId === packageItem.dispatchId);
-        return inLogistic || isExFactory;
+        return inLogistic || isFOR;
       });
 
       if (itemsReadyForCallan.length === 0) return false;

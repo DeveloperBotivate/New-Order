@@ -92,14 +92,14 @@ export default function PendingCallan({ data, filters, onSuccess }) {
     const packagingHistory = getPackagingHistory() || [];
     const callanHistory = getCallanHistory() || [];
     const tType = (order.transportingType || '').toLowerCase().replace('-', ' ').trim();
-    const isExFactory = tType === 'ex factory';
+    const isFOR = tType === 'for';
 
     const orderPackaged = packagingHistory.filter(ph => ph.orderId === order.orderId && ph.packagingStatus === 'Yes');
-    
-    // Items that are either Ex-Factory or exist in Vehicle Logistic
+
+    // Items that are either 'FOR' (direct to Challan) or exist in Vehicle Logistic
     const itemsReadyForCallan = orderPackaged.filter(packageItem => {
       const inLogistic = logisticHistory.some(lh => lh.dispatchId === packageItem.dispatchId);
-      return inLogistic || isExFactory;
+      return inLogistic || isFOR;
     });
 
     // Filter out items already in Callan

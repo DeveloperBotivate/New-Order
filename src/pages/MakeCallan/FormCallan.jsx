@@ -16,13 +16,13 @@ export default function FormCallan({ order, onClose, onSuccess }) {
     const callanHistory = getCallanHistory() || [];
     
     const tType = (order.transportingType || '').toLowerCase().replace('-', ' ').trim();
-    const isExFactory = tType === 'ex factory';
+    const isFOR = tType === 'for';
 
     const orderPackaged = packagingHistory.filter(ph => ph.orderId === order.orderId && ph.packagingStatus === 'Yes');
-    
+
     const itemsReadyForCallan = orderPackaged.filter(packageItem => {
       const inLogistic = logisticHistory.some(lh => lh.dispatchId === packageItem.dispatchId);
-      return inLogistic || isExFactory;
+      return inLogistic || isFOR;
     });
 
     return itemsReadyForCallan.filter(readyItem => {

@@ -125,10 +125,10 @@ const Sidebar = ({ isOpen, onClose }) => {
       }).length;
 
       // 9. Vehicle Logistic: orders with packaged items not yet in logistic history.
-      // Plain 'Ex Factory' orders skip Vehicle Logistic entirely (buyer arranges pickup).
+      // Plain 'FOR' orders skip Vehicle Logistic entirely and go straight to Make Challan.
       const logisticHistory = getLogisticHistory() || [];
       const logisticCount = receivedOrders.filter(order => {
-        if (!['FOR', 'Ex Factory Transpoter Office'].includes(order.transportingType)) return false;
+        if (!['Ex Factory', 'Ex Factory Transpoter Office'].includes(order.transportingType)) return false;
         const orderPackaged = packagingHistory.filter(ph => ph.orderId === order.orderId && ph.packagingStatus === 'Yes');
         if (orderPackaged.length === 0) return false;
         return orderPackaged.some(packageItem => {
@@ -136,17 +136,19 @@ const Sidebar = ({ isOpen, onClose }) => {
         });
       }).length;
 
-      // 10. Make Callan: orders that are ready for Callan (i.e. in Vehicle Logistic history)
-      // but not yet in Callan history
+      // 10. Make Callan: orders that are ready for Callan — either already in Vehicle
+      // Logistic history, or the order's Transporting Type is 'FOR' (goes directly to
+      // Challan, skipping Vehicle Logistic) — but not yet in Callan history.
       const callanHistory = getCallanHistory() || [];
       const callanCount = receivedOrders.filter(order => {
         const orderPackaged = packagingHistory.filter(ph => ph.orderId === order.orderId && ph.packagingStatus === 'Yes');
         if (orderPackaged.length === 0) return false;
 
         const orderLogistic = logisticHistory.filter(lh => lh.orderId === order.orderId);
+        const isFOR = (order.transportingType || '').toLowerCase().replace('-', ' ').trim() === 'for';
 
         return orderPackaged.some(packageItem => {
-          const readyForCallan = orderLogistic.some(lh => lh.dispatchId === packageItem.dispatchId);
+          const readyForCallan = orderLogistic.some(lh => lh.dispatchId === packageItem.dispatchId) || isFOR;
           const notInCallan = !callanHistory.some(ch => ch.dispatchId === packageItem.dispatchId);
           return readyForCallan && notInCallan;
         });

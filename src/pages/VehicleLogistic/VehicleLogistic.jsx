@@ -34,11 +34,11 @@ export default function VehicleLogistic() {
   const handleClearFilters = () =>
     setFilters({ searchQuery: '', fromDate: '', toDate: '', division: '', partyName: '' });
 
-  // Filter criteria for transport type — plain 'Ex Factory' orders (buyer arranges
-  // their own pickup) skip Vehicle Logistic entirely and go straight from Packaging
-  // to Make Challan; only these two types need a vehicle/driver/LR assigned here.
+  // Filter criteria for transport type — plain 'FOR' orders skip Vehicle Logistic
+  // entirely and go straight from Packaging to Make Challan; only Ex Factory orders
+  // (buyer arranges their own pickup) need a vehicle/driver/LR assigned here.
   const isValidTransportType = (type) => {
-    return ['FOR', 'Ex Factory Transpoter Office'].includes(type);
+    return ['Ex Factory', 'Ex Factory Transpoter Office'].includes(type);
   };
 
   // 1. Pending Items: Orders that have packaged items that are NOT successfully in logistic history yet
