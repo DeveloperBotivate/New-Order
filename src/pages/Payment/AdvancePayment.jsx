@@ -1,25 +1,29 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Calendar, RotateCcw } from 'lucide-react';
-import { getReceivedOrders, getPaymentHistory } from '../../utils/storageManager';
+import { getReceivedOrders, getPaymentHistory, getDivisions } from '../../utils/storageManager';
 import PendingAdvance from './PendingAdvance';
 import HistoryAdvance from './HistoryAdvance';
 import { TabSwitcher } from '../../components/StandardButtons';
+import SearchableDropdown from '../../components/SearchableDropdown';
 
 export default function AdvancePayment() {
   const [activeTab, setActiveTab] = useState('pending');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  
+
   const [filters, setFilters] = useState({
     searchQuery: '',
+    division: '',
     fromDate: '',
     toDate: '',
   });
 
   const [orders, setOrders] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [paymentHistory, setPaymentHistory] = useState([]);
 
   const loadData = () => {
     setOrders(getReceivedOrders() || []);
+    setDivisions(getDivisions() || []);
     setPaymentHistory(getPaymentHistory() || []);
   };
 
@@ -55,18 +59,23 @@ export default function AdvancePayment() {
     // Return all advance payment transactions
     const advances = paymentHistory.filter(p => p.paymentType === 'Advance');
     // Map with order details
-    return advances.map(payment => {
+    return advances.filter(p => orders.some(o => o.orderId === p.orderId)).map(payment => {
       const order = orders.find(o => o.orderId === payment.orderId) || {};
       return {
         ...payment,
         partyName: order.partyName || '-',
         division: order.division || '-',
-        poNumber: order.poNumber || '-'
+        poNumber: order.poNumber || '-',
+        poImage: order.poImage || null
       };
     }).sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
   }, [orders, paymentHistory]);
 
-  const handleClearFilters = () => setFilters({ searchQuery: '', fromDate: '', toDate: '' });
+  const handleClearFilters = () => setFilters({ searchQuery: '', division: '', fromDate: '', toDate: '' });
+
+  const divisionOptions = useMemo(() =>
+    divisions.map(d => ({ value: d.name, label: d.name }))
+  , [divisions]);
 
   return (
     <div className="p-0 sm:p-1 md:p-3 space-y-2 md:space-y-3 flex flex-col h-full min-h-0">
@@ -115,6 +124,13 @@ export default function AdvancePayment() {
                 </div>
               ))}
             </div>
+            <div className="flex flex-row gap-2 w-full lg:w-auto lg:contents">
+              <div className="flex-1 min-w-0 lg:min-w-[120px]">
+                <SearchableDropdown options={divisionOptions} value={filters.division}
+                  onChange={(val) => setFilters({ ...filters, division: val })}
+                  placeholder="All Divisions" className="h-[32px] md:h-[38px]" />
+              </div>
+            </div>
             <button onClick={handleClearFilters}
               className="hidden lg:flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded w-[38px] h-[38px] hover:bg-gray-100 shadow-sm">
               <RotateCcw size={16} />
@@ -125,7 +141,7 @@ export default function AdvancePayment() {
 
       <div className="flex-1 min-h-0 flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {activeTab === 'pending' ? (
-          <PendingAdvance 
+          <PendingAdvance
             data={pendingAdvanceOrders} 
             filters={filters} 
             onSuccess={loadData}

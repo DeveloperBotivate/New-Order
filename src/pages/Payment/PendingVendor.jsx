@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import DataTable from '../../components/DataTable';
-import { CreditCard } from 'lucide-react';
+import { CreditCard, Eye } from 'lucide-react';
+import { isPdfDataUrl } from '../../utils/helpers';
 import FormVendorPayment from './FormVendorPayment';
 import { savePaymentTransaction } from '../../utils/storageManager';
 import toast from 'react-hot-toast';
@@ -10,14 +11,24 @@ export default function PendingVendor({ data, filters, onSuccess }) {
   const [itemsPerPage, setItemsPerPage] = useState(15);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState('');
+
+  const handleImageView = (base64, e) => {
+    e.stopPropagation();
+    setSelectedImage(base64);
+    setShowImageModal(true);
+  };
 
   const filteredData = data.filter(item => {
+    if (filters.division && item.division !== filters.division) return false;
+
     if (filters.fromDate || filters.toDate) {
       const date = item.poDate;
       if (filters.fromDate && date < filters.fromDate) return false;
       if (filters.toDate && date > filters.toDate) return false;
     }
-    
+
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
       return (
@@ -36,7 +47,7 @@ export default function PendingVendor({ data, filters, onSuccess }) {
     { label: "Action", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     { label: "Order ID", className: "sticky left-[120px] bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     "Division", "PO Number", "PO Date", "Party Name", "Delivery Date", "Transport", "Total Product", 
-    "PO Value", "Advance Paid", "Vendor Paid", 
+    "PO Value", "Advance Paid", "Vendor Paid", "Invoice Number", "Invoice Date", "PO Copy", "Invoice Copy",
     { label: "Pending Balance", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[140px]" }
   ];
 
@@ -49,6 +60,8 @@ export default function PendingVendor({ data, filters, onSuccess }) {
       paymentMode: formData.paymentMode,
       referenceNo: formData.referenceNo,
       remarks: formData.remarks,
+      receiptImage: formData.receiptImage,
+      billDate: formData.billDate,
     };
     
     savePaymentTransaction([paymentRecord]);
@@ -68,7 +81,7 @@ export default function PendingVendor({ data, filters, onSuccess }) {
       <div className="grid grid-cols-2 gap-2 mb-4">
         <div>
           <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Total PO Value</span>
-          <span className="text-xs font-bold text-gray-700">₹{order.totalPOValue?.toFixed(2)}</span>
+          <span className="text-xs font-bold text-gray-700">₹{order.effectivePOValue?.toFixed(2)}</span>
         </div>
         <div>
           <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Pending</span>
@@ -110,9 +123,25 @@ export default function PendingVendor({ data, filters, onSuccess }) {
       <td className="px-4 py-3 text-xs text-center text-gray-600 whitespace-nowrap">{order.expectedDeliveryDate}</td>
       <td className="px-4 py-3 text-xs text-center text-gray-600 whitespace-nowrap">{order.transportingType}</td>
       <td className="px-4 py-3 text-xs text-center font-bold text-gray-800 whitespace-nowrap bg-gray-50">{order.items?.length || 0}</td>
-      <td className="px-4 py-3 text-xs text-center font-bold text-emerald-600 whitespace-nowrap">₹{order.totalPOValue?.toFixed(2)}</td>
+      <td className="px-4 py-3 text-xs text-center font-bold text-emerald-600 whitespace-nowrap">₹{order.effectivePOValue?.toFixed(2)}</td>
       <td className="px-4 py-3 text-xs text-center font-bold text-amber-600 whitespace-nowrap bg-amber-50/50">₹{(order.totalAdvancePaid || 0).toFixed(2)}</td>
       <td className="px-4 py-3 text-xs text-center font-bold text-emerald-600 whitespace-nowrap bg-emerald-50/50">₹{(order.totalVendorPaid || 0).toFixed(2)}</td>
+      <td className="px-4 py-3 text-xs text-center text-gray-700 whitespace-nowrap">{order.invoiceNumber || '-'}</td>
+      <td className="px-4 py-3 text-xs text-center text-gray-600 whitespace-nowrap">{order.invoiceDate || '-'}</td>
+      <td className="px-4 py-3 text-center whitespace-nowrap bg-white">
+        {order.poImage ? (
+          <button onClick={(e) => handleImageView(order.poImage, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
+            <Eye size={16} />
+          </button>
+        ) : <span className="text-gray-300">-</span>}
+      </td>
+      <td className="px-4 py-3 text-center whitespace-nowrap bg-white">
+        {order.invoiceImage ? (
+          <button onClick={(e) => handleImageView(order.invoiceImage, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
+            <Eye size={16} />
+          </button>
+        ) : <span className="text-gray-300">-</span>}
+      </td>
       <td className="px-4 py-3 text-xs text-center font-bold text-red-600 whitespace-nowrap bg-red-50/50 sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb]">₹{order.pendingAmount.toFixed(2)}</td>
     </tr>
   );
@@ -142,6 +171,20 @@ export default function PendingVendor({ data, filters, onSuccess }) {
           }}
           onSubmit={handlePaymentSubmit}
         />
+      )}
+
+      {showImageModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={() => setShowImageModal(false)}>
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-2 relative shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="overflow-auto max-h-[85vh] rounded-xl">
+              {isPdfDataUrl(selectedImage) ? (
+                <iframe src={selectedImage} title="PDF Preview" className="w-full h-[80vh] rounded-xl bg-white" />
+              ) : (
+                <img src={selectedImage} alt="Attachment" className="w-full h-auto" />
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

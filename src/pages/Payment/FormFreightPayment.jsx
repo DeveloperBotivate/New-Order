@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { X, CheckCircle, Upload, Truck, Calendar } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { compressImageFile } from '../../utils/helpers';
+import toast from 'react-hot-toast';
+import { compressImageFile, validateAttachmentFile, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 
 export default function FormFreightPayment({ agencyData, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
@@ -10,11 +11,16 @@ export default function FormFreightPayment({ agencyData, onClose, onSubmit }) {
     paymentMode: 'Bank Transfer',
     referenceNo: '',
     remarks: '',
+    lrNumber: agencyData.lrNumber || '',
+    lrCopy: agencyData.lrCopy || null,
   });
 
   const [errors, setErrors] = useState({});
 
   if (!agencyData) return null;
+
+  // Bilty wasn't captured back at the Vehicle Logistic step — let the user fill it in here.
+  const biltyMissing = !agencyData.lrNumber || !agencyData.lrCopy;
 
   const validateForm = () => {
     const newErrors = {};
@@ -74,6 +80,10 @@ export default function FormFreightPayment({ agencyData, onClose, onSubmit }) {
               <div>
                 <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Transporter Name</p>
                 <p className="text-sm font-semibold text-gray-900">{agencyData.transportAgency || '-'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Bilty Number</p>
+                <p className="text-sm font-semibold text-gray-900">{agencyData.lrNumber || '-'}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Total Expected</p>
@@ -180,13 +190,18 @@ export default function FormFreightPayment({ agencyData, onClose, onSubmit }) {
                   <label className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors shadow-sm">
                     <Upload size={16} className="text-gray-500" />
                     <span className="text-sm font-medium text-gray-700">Upload Receipt</span>
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*,.pdf"
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept={ATTACHMENT_ACCEPT}
                       onChange={async (e) => {
                         const file = e.target.files[0];
                         if (!file) return;
+                        const sizeError = validateAttachmentFile(file);
+                        if (sizeError) {
+                          toast.error(sizeError);
+                          return;
+                        }
                         const compressed = await compressImageFile(file);
                         setFormData(prev => ({ ...prev, receiptImage: compressed }));
                       }}
@@ -197,10 +212,69 @@ export default function FormFreightPayment({ agencyData, onClose, onSubmit }) {
                       <CheckCircle size={14} /> Uploaded
                     </span>
                   )}
+                  <span className="text-[10px] text-gray-400">Image or PDF, max {MAX_ATTACHMENT_SIZE_MB}MB</span>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Bilty Details — only shown when missing from Vehicle Logistic */}
+          {biltyMissing && (
+            <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50">
+                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                  <Truck size={16} className="text-amber-500" />
+                  Bilty Details <span className="text-gray-400 font-normal normal-case text-xs">(Optional — missing from Vehicle Logistic)</span>
+                </h3>
+              </div>
+              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Bilty Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.lrNumber}
+                    onChange={(e) => setFormData(prev => ({ ...prev, lrNumber: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-medium"
+                    placeholder="Enter Bilty Number"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Bilty Copy Upload
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors shadow-sm">
+                      <Upload size={16} className="text-gray-500" />
+                      <span className="text-sm font-medium text-gray-700">Upload Bilty Copy</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept={ATTACHMENT_ACCEPT}
+                        onChange={async (e) => {
+                          const file = e.target.files[0];
+                          if (!file) return;
+                          const sizeError = validateAttachmentFile(file);
+                          if (sizeError) {
+                            toast.error(sizeError);
+                            return;
+                          }
+                          const compressed = await compressImageFile(file);
+                          setFormData(prev => ({ ...prev, lrCopy: compressed }));
+                        }}
+                      />
+                    </label>
+                    {formData.lrCopy && (
+                      <span className="text-xs font-medium text-emerald-600 flex items-center gap-1">
+                        <CheckCircle size={14} /> Uploaded
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

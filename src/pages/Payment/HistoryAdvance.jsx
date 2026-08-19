@@ -1,18 +1,27 @@
 import React, { useState } from 'react';
 import DataTable from '../../components/DataTable';
-import { Eye, CheckCircle } from 'lucide-react';
+import { Eye, CheckCircle, FileImage, X } from 'lucide-react';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function HistoryAdvance({ data, filters }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
+  const [viewImage, setViewImage] = useState(null);
+
+  const handleImageView = (imgUrl, e) => {
+    e.stopPropagation();
+    if (imgUrl) setViewImage(imgUrl);
+  };
 
   const filteredData = data.filter(item => {
+    if (filters.division && item.division !== filters.division) return false;
+
     if (filters.fromDate || filters.toDate) {
       const date = item.paymentDate;
       if (filters.fromDate && date < filters.fromDate) return false;
       if (filters.toDate && date > filters.toDate) return false;
     }
-    
+
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
       return (
@@ -30,7 +39,8 @@ export default function HistoryAdvance({ data, filters }) {
 
   const tableHeaders = [
     { label: "Payment ID", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
-    "Order ID", "Party Name", "Payment Date", "Amount Paid", "Payment Mode", "Ref / UTR No", "Remarks", "Status"
+    "Order ID", "Party Name", "Payment Date", "Amount Paid", "Payment Mode", "Ref / UTR No", "Remarks", "Status", "PO Image",
+    { label: "Receipt", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[80px]" }
   ];
 
   const renderCard = (payment) => (
@@ -70,11 +80,30 @@ export default function HistoryAdvance({ data, filters }) {
           <CheckCircle size={12} /> Success
         </span>
       </td>
+      <td className="px-3 py-3 text-center whitespace-nowrap bg-white" onClick={(e) => e.stopPropagation()}>
+        {payment.poImage ? (
+          <button onClick={(e) => handleImageView(payment.poImage, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
+            <Eye size={16} />
+          </button>
+        ) : (
+          <span className="text-gray-400 text-xs">-</span>
+        )}
+      </td>
+      <td className="px-3 py-3 text-center whitespace-nowrap sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb] transition-colors bg-white hover:bg-slate-50" onClick={(e) => e.stopPropagation()}>
+        {payment.receiptImage ? (
+          <button onClick={(e) => handleImageView(payment.receiptImage, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
+            <FileImage size={16} />
+          </button>
+        ) : (
+          <span className="text-gray-400 text-xs">-</span>
+        )}
+      </td>
     </tr>
   );
 
   return (
-    <DataTable
+    <>
+      <DataTable
       headers={tableHeaders}
       data={paginatedData}
       renderRow={renderRow}
@@ -87,5 +116,22 @@ export default function HistoryAdvance({ data, filters }) {
       totalResults={filteredData.length}
       minWidth="1000px"
     />
+    
+      {/* Image Modal */}
+      {viewImage && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={() => setViewImage(null)}>
+          <div className="bg-white rounded-xl p-2 max-w-4xl max-h-[90vh] overflow-auto relative shadow-2xl" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setViewImage(null)} className="absolute top-4 right-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg p-2 transition-colors">
+              <X size={20} />
+            </button>
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

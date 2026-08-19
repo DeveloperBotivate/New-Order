@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Eye, X } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import { getPackagingHistory } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function HistoryPackaging({ data, filters }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -102,7 +103,20 @@ export default function HistoryPackaging({ data, filters }) {
           <td className="px-3 py-3 text-center text-[11px] font-medium text-green-600 whitespace-nowrap">₹{order.totalPOValue || '0'}</td>
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{order.advancePayment || 'No'}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-green-600 whitespace-nowrap">₹{order.advanceAmount || '0'}</td>
-          <td className="px-3 py-3 text-[11px] text-gray-600 min-w-[150px] truncate max-w-[200px]" title={packagingRemarks}>{packagingRemarks || '-'}</td>
+          <td className="px-3 py-3 text-[11px] text-gray-600 min-w-[150px] truncate max-w-[200px]" title={packagingRemarks}>
+            <div className="flex items-center gap-2">
+              <span className="truncate">{packagingRemarks || '-'}</span>
+              {orderPackagedItems[orderPackagedItems.length - 1]?.packagingImage && (
+                <button 
+                  onClick={(e) => handleImageView(orderPackagedItems[orderPackagedItems.length - 1].packagingImage, e)} 
+                  className="text-indigo-600 hover:text-indigo-800 flex-shrink-0"
+                  title="View Packaging Image"
+                >
+                  <Eye size={14} />
+                </button>
+              )}
+            </div>
+          </td>
           
           <td className="px-3 py-3 whitespace-nowrap sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb] transition-colors bg-white group-hover:bg-slate-50 text-center" onClick={(e) => e.stopPropagation()}>
             {order.poImage ? (
@@ -136,6 +150,7 @@ export default function HistoryPackaging({ data, filters }) {
                         <th className="px-4 py-3 font-bold text-right">GST Value</th>
                         <th className="px-4 py-3 font-bold text-right text-indigo-600">Grand Total</th>
                         <th className="px-4 py-3 font-bold text-center">Packaging</th>
+                        <th className="px-4 py-3 font-bold">Product Remarks</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -163,6 +178,7 @@ export default function HistoryPackaging({ data, filters }) {
                             <td className="px-4 py-3 text-[11px] font-medium text-gray-700 text-right">₹{gstValue.toFixed(2)}</td>
                             <td className="px-4 py-3 text-[11px] font-bold text-indigo-600 text-right">₹{grandTotal.toFixed(2)}</td>
                             <td className="px-4 py-3 text-[11px] font-bold text-emerald-600 text-center">{item.packagingStatus}</td>
+                            <td className="px-4 py-3 text-[11px] text-gray-600 max-w-[150px] truncate" title={item.productRemarks}>{item.productRemarks || '-'}</td>
                           </tr>
                         );
                       })}
@@ -200,7 +216,11 @@ export default function HistoryPackaging({ data, filters }) {
             <button onClick={() => setViewImage(null)} className="absolute top-4 right-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg p-2 transition-colors">
               <X size={20} />
             </button>
-            <img src={viewImage} alt="PO Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="PO Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            )}
           </div>
         </div>
       )}

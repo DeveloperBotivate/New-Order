@@ -3,13 +3,13 @@ import toast from 'react-hot-toast';
 import {
   Plus, Search, Filter, Eye, X,
   RotateCcw, Trash2, Check, PackagePlus,
-  Upload, ChevronDown, ChevronUp, FileText, Info
+  Upload, ChevronDown, ChevronUp, FileText, Info, Boxes
 } from 'lucide-react';
 import {
   getDivisions, getVendors, getTransportingTypes, getMasterItems, getUOMs,
-  getReceivedOrders, saveReceivedOrder, getPersons
+  getReceivedOrders, saveReceivedOrder, getPersons, getIMSStock
 } from '../../utils/storageManager';
-import { generateId, compressImageFile } from '../../utils/helpers';
+import { generateId, compressImageFile, validateAttachmentFile, isPdfDataUrl, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 import ModalForm from '../../components/ModalForm';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -164,7 +164,8 @@ export default function PurchaseOrder() {
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) return toast.error('File size must be less than 2MB');
+    const sizeError = validateAttachmentFile(file);
+    if (sizeError) return toast.error(sizeError);
     try {
       const base64 = await compressImageFile(file);
       setFormData(prev => ({ ...prev, poImage: base64 }));
@@ -595,7 +596,18 @@ export default function PurchaseOrder() {
                   )}
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                     <div className="space-y-1 md:col-span-2">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Product Name <span className="text-blue-500">*</span></label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-slate-700">Product Name <span className="text-blue-500">*</span></label>
+                        {item.productName && (() => {
+                          const stock = getIMSStock(item.productName);
+                          const isLow = stock !== null && stock < 100;
+                          return (
+                            <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${isLow ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`} title="Live current stock from IMS">
+                              <Boxes size={11} /> IMS Stock: {stock} {item.uom || ''}
+                            </span>
+                          );
+                        })()}
+                      </div>
                       <SearchableDropdown options={masterItems.map(m => ({ value: m.name, label: m.name }))} value={item.productName} onChange={(val) => handleItemChange(index, 'productName', val)} placeholder="e.g. Steel Pipe" className="h-[38px] text-sm" />
                     </div>
                     <div className="space-y-1">
@@ -681,7 +693,7 @@ export default function PurchaseOrder() {
                       </>
                     )}
                   </div>
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                  <input type="file" className="hidden" accept={ATTACHMENT_ACCEPT} onChange={handleFileChange} />
                 </label>
              </div>
 
@@ -735,7 +747,9 @@ export default function PurchaseOrder() {
               <X size={20} />
             </button>
             <div className="overflow-auto max-h-[85vh] rounded-xl">
-              {selectedImage.startsWith('data:image/') ? (
+              {isPdfDataUrl(selectedImage) ? (
+                <iframe src={selectedImage} title="PDF Preview" className="w-full h-[80vh] rounded-xl bg-white" />
+              ) : selectedImage.startsWith('data:image/') ? (
                 <img src={selectedImage} alt="Attachment" className="w-full h-auto" />
               ) : (
                 <div className="p-10 text-center">

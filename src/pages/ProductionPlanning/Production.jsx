@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Calendar, RotateCcw } from 'lucide-react';
-import { getReceivedOrders, getDeliveryHistory } from '../../utils/storageManager';
+import { getReceivedOrders, getDeliveryHistory, getCheckedProductNumbers } from '../../utils/storageManager';
 import PendingProduction from './PendingProduction';
 import HistoryProduction from './HistoryProduction';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -31,14 +31,17 @@ export default function Production() {
   const handleClearFilters = () =>
     setFilters({ searchQuery: '', fromDate: '', toDate: '', division: '', partyName: '' });
 
-  // Only show orders that have passed Check & Validation and have "No Stock" unproduced items
+  // Only show orders with items that have passed Check & Validation (per product line)
+  // and have "No Stock" unproduced items
   const pendingItems = useMemo(() => {
     return orders.filter(order => {
-      if (!order.isChecked) return false;
+      const checkedProductNumbers = getCheckedProductNumbers(order);
+      if (checkedProductNumbers.length === 0) return false;
       return order.items?.some((item, idx) => {
         const productNumber = `${order.orderId}-${String(idx + 1).padStart(2, '0')}`;
+        if (!checkedProductNumbers.includes(productNumber)) return false;
         const historyForProduct = history.filter(h => h.orderId === order.orderId && h.productNumber === productNumber);
-        
+
         // Return true if there is any No Stock item that hasn't been produced yet
         return historyForProduct.some(h => h.stockStatus === 'No Stock' && !h.produced);
       });

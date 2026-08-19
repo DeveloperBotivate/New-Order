@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { X, CheckCircle, Upload, Banknote, Calendar } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { compressImageFile } from '../../utils/helpers';
+import toast from 'react-hot-toast';
+import { compressImageFile, validateAttachmentFile, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 
 export default function FormAdvancePayment({ order, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
@@ -180,13 +181,18 @@ export default function FormAdvancePayment({ order, onClose, onSubmit }) {
                   <label className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors shadow-sm">
                     <Upload size={16} className="text-gray-500" />
                     <span className="text-sm font-medium text-gray-700">Upload Receipt</span>
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*,.pdf"
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept={ATTACHMENT_ACCEPT}
                       onChange={async (e) => {
                         const file = e.target.files[0];
                         if (!file) return;
+                        const sizeError = validateAttachmentFile(file);
+                        if (sizeError) {
+                          toast.error(sizeError);
+                          return;
+                        }
                         const compressed = await compressImageFile(file);
                         setFormData(prev => ({ ...prev, receiptImage: compressed }));
                       }}
@@ -197,6 +203,7 @@ export default function FormAdvancePayment({ order, onClose, onSubmit }) {
                       <CheckCircle size={14} /> Uploaded
                     </span>
                   )}
+                  <span className="text-[10px] text-gray-400">Image or PDF, max {MAX_ATTACHMENT_SIZE_MB}MB</span>
                 </div>
               </div>
             </div>

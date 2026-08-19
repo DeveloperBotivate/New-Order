@@ -1,25 +1,29 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Calendar, RotateCcw } from 'lucide-react';
-import { getLogisticHistory, getPaymentHistory } from '../../utils/storageManager';
+import { getLogisticHistory, getPaymentHistory, getDivisions } from '../../utils/storageManager';
 import PendingFreight from './PendingFreight';
 import HistoryFreight from './HistoryFreight';
 import { TabSwitcher } from '../../components/StandardButtons';
+import SearchableDropdown from '../../components/SearchableDropdown';
 
 export default function FreightPayment() {
   const [activeTab, setActiveTab] = useState('pending');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  
+
   const [filters, setFilters] = useState({
     searchQuery: '',
+    division: '',
     fromDate: '',
     toDate: '',
   });
 
   const [logisticRecords, setLogisticRecords] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [paymentHistory, setPaymentHistory] = useState([]);
 
   const loadData = () => {
     setLogisticRecords(getLogisticHistory() || []);
+    setDivisions(getDivisions() || []);
     setPaymentHistory(getPaymentHistory() || []);
   };
 
@@ -64,19 +68,25 @@ export default function FreightPayment() {
 
   const historyFreightPayments = useMemo(() => {
     const freights = paymentHistory.filter(p => p.paymentType === 'Freight');
-    return freights.map(payment => {
+    return freights.filter(p => logisticRecords.some(o => o.orderId === p.orderId)).map(payment => {
       const logisticRecord = logisticRecords.find(o => o.orderId === payment.orderId) || {};
       return {
         ...payment,
         partyName: logisticRecord.partyName || '-',
+        division: logisticRecord.division || '-',
         poNumber: logisticRecord.poNumber || '-',
         transportAgency: logisticRecord.transportAgency || '-',
-        lorryReceipt: logisticRecord.lrNumber || '-'
+        lrNumber: logisticRecord.lrNumber || '-',
+        lrCopy: logisticRecord.lrCopy || null
       };
     }).sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
   }, [logisticRecords, paymentHistory]);
 
-  const handleClearFilters = () => setFilters({ searchQuery: '', fromDate: '', toDate: '' });
+  const handleClearFilters = () => setFilters({ searchQuery: '', division: '', fromDate: '', toDate: '' });
+
+  const divisionOptions = useMemo(() =>
+    divisions.map(d => ({ value: d.name, label: d.name }))
+  , [divisions]);
 
   return (
     <div className="p-0 sm:p-1 md:p-3 space-y-2 md:space-y-3 flex flex-col h-full min-h-0">
@@ -125,6 +135,13 @@ export default function FreightPayment() {
                 </div>
               ))}
             </div>
+            <div className="flex flex-row gap-2 w-full lg:w-auto lg:contents">
+              <div className="flex-1 min-w-0 lg:min-w-[120px]">
+                <SearchableDropdown options={divisionOptions} value={filters.division}
+                  onChange={(val) => setFilters({ ...filters, division: val })}
+                  placeholder="All Divisions" className="h-[32px] md:h-[38px]" />
+              </div>
+            </div>
             <button onClick={handleClearFilters}
               className="hidden lg:flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded w-[38px] h-[38px] hover:bg-gray-100 shadow-sm">
               <RotateCcw size={16} />
@@ -135,7 +152,7 @@ export default function FreightPayment() {
 
       <div className="flex-1 min-h-0 flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {activeTab === 'pending' ? (
-          <PendingFreight 
+          <PendingFreight
             data={pendingFreightOrders} 
             filters={filters} 
             onSuccess={loadData}

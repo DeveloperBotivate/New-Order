@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, CheckSquare, Eye, Upload } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import FormCallan from './FormCallan';
 import { getPackagingHistory, getLogisticHistory, getCallanHistory } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function PendingCallan({ data, filters, onSuccess }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -269,7 +270,11 @@ export default function PendingCallan({ data, filters, onSuccess }) {
             <button onClick={() => setViewImage(null)} className="absolute -top-4 -right-4 bg-white text-gray-600 rounded-full p-2 shadow-lg hover:bg-gray-50">
               <X size={20} />
             </button>
-            <img src={viewImage} alt="Document" className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="Document" className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
+            )}
           </div>
         </div>
       )}

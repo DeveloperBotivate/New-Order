@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, FilePenLine, X, FileImage } from 'lucide-react'
 import DataTable from '../../components/DataTable';
 import FormDelivery from './FormDelivery';
 import { getInvoiceHistory, getConfirmDeliveryHistory } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function PendingDelivery({ data, filters, onSuccess }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -259,7 +260,11 @@ export default function PendingDelivery({ data, filters, onSuccess }) {
             <button onClick={() => setViewImage(null)} className="absolute top-4 right-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg p-2 transition-colors">
               <X size={20} />
             </button>
-            <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            )}
           </div>
         </div>
       )}

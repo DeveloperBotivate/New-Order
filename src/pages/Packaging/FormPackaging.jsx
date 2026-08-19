@@ -1,11 +1,29 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, CheckCircle, PackageSearch } from 'lucide-react';
+import { X, CheckCircle, PackageSearch, ImagePlus, FileText } from 'lucide-react';
 import { savePackagingTransaction, getDispatchHistory, getPackagingHistory } from '../../utils/storageManager';
+import { compressImageFile, validateAttachmentFile, isPdfDataUrl, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
 export default function FormPackaging({ order, onClose, onSuccess }) {
   const [remarks, setRemarks] = useState('');
+  const [packagingImage, setPackagingImage] = useState(null);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const sizeError = validateAttachmentFile(file);
+    if (sizeError) {
+      toast.error(sizeError);
+      return;
+    }
+    try {
+      const compressed = await compressImageFile(file);
+      setPackagingImage(compressed);
+    } catch {
+      toast.error('Error reading file');
+    }
+  };
 
   const [items, setItems] = useState(() => {
     // Get all dispatched items for this order
@@ -26,6 +44,7 @@ export default function FormPackaging({ order, onClose, onSuccess }) {
       return {
         ...item,
         packagingStatus: prevAction ? prevAction.packagingStatus : 'Select',
+        productRemarks: '',
         _selected: false
       };
     });
@@ -55,7 +74,11 @@ export default function FormPackaging({ order, onClose, onSuccess }) {
       }
     }
 
-    const itemsToSave = selectedItems.map(item => ({ ...item, packagingRemarks: remarks }));
+    const itemsToSave = selectedItems.map(item => ({ 
+      ...item, 
+      packagingRemarks: remarks,
+      packagingImage: packagingImage
+    }));
 
     savePackagingTransaction(itemsToSave);
     toast.success('Packaging Status Saved Successfully!');
@@ -166,6 +189,7 @@ export default function FormPackaging({ order, onClose, onSuccess }) {
                     <th className="px-3 py-3 font-bold text-right whitespace-nowrap">GST Value</th>
                     <th className="px-3 py-3 font-bold text-right text-indigo-600 whitespace-nowrap">Grand Total</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Packaging</th>
+                    <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Remarks</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -224,6 +248,16 @@ export default function FormPackaging({ order, onClose, onSuccess }) {
                               <option value="No">No</option>
                             </select>
                           </td>
+                          <td className="px-3 py-2 align-middle">
+                            <input
+                              type="text"
+                              disabled={!item._selected}
+                              className={`w-full text-[11px] border rounded p-1.5 focus:outline-none focus:border-indigo-500 ${item._selected ? 'border-gray-300 bg-white' : 'border-transparent bg-transparent text-gray-400 placeholder-transparent'}`}
+                              placeholder="Product remark..."
+                              value={item.productRemarks}
+                              onChange={(e) => handleItemChange(index, 'productRemarks', e.target.value)}
+                            />
+                          </td>
                         </tr>
                       );
                     })
@@ -233,16 +267,53 @@ export default function FormPackaging({ order, onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* Remarks (order-level, outside the items table) */}
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-wider">Remarks</label>
-            <textarea
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              rows={3}
-              placeholder="Enter packaging remarks..."
-              className="w-full text-sm border border-gray-300 rounded-lg p-3 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none"
-            />
+          {/* Remarks and Image (order-level, outside the items table) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-wider">Global Remarks</label>
+              <textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                rows={4}
+                placeholder="Enter packaging remarks..."
+                className="w-full text-sm border border-gray-300 rounded-lg p-3 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-wider">Packaging Image</label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-center h-[106px] hover:bg-gray-50 transition-colors relative">
+                {packagingImage ? (
+                  <>
+                    {isPdfDataUrl(packagingImage) ? (
+                      <div className="flex flex-col items-center justify-center gap-1">
+                        <FileText size={24} className="text-red-500" />
+                        <span className="text-[10px] font-medium text-gray-600">PDF Attached</span>
+                      </div>
+                    ) : (
+                      <img src={packagingImage} alt="Packaging" className="max-h-full max-w-full object-contain rounded" />
+                    )}
+                    <button
+                      onClick={() => setPackagingImage(null)}
+                      className="absolute top-2 right-2 bg-white/80 p-1 rounded-full text-gray-600 hover:text-red-600 shadow-sm"
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <ImagePlus size={24} className="text-gray-400 mb-2" />
+                    <span className="text-xs text-gray-500 font-medium">Click to upload image or PDF</span>
+                    <span className="text-[10px] text-gray-400">Max {MAX_ATTACHMENT_SIZE_MB}MB</span>
+                    <input
+                      type="file"
+                      accept={ATTACHMENT_ACCEPT}
+                      onChange={handleImageUpload}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                  </>
+                )}
+              </div>
+            </div>
           </div>
 
         </div>

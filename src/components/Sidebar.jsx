@@ -40,7 +40,7 @@ import {
   LayoutDashboard
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { getIndents, getReceivedOrders, getDeliveryHistory, getDispatchHistory, getPackagingHistory, getLogisticHistory, getCallanHistory, getInvoiceHistory, getConfirmDeliveryHistory } from '../utils/storageManager';
+import { getIndents, getReceivedOrders, getDeliveryHistory, getDispatchHistory, getPackagingHistory, getLogisticHistory, getCallanHistory, getInvoiceHistory, getConfirmDeliveryHistory, getCheckedProductNumbers, getPaymentHistory } from '../utils/storageManager';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
@@ -54,7 +54,8 @@ const Sidebar = ({ isOpen, onClose }) => {
     logistic: 0,
     callan: 0,
     invoice: 0,
-    confirmDelivery: 0
+    confirmDelivery: 0,
+    payment: 0
   });
 
   useEffect(() => {
@@ -73,17 +74,20 @@ const Sidebar = ({ isOpen, onClose }) => {
       const receivedOrders = getReceivedOrders() || [];
       const checkValidationCount = receivedOrders.filter(o => !o.isChecked).length;
 
-      // 6. Check for Delivery: valid orders where pendingQty > 0 and no 'No Stock' status
+      // 6. Check for Delivery: orders with at least one item that passed Check & Validation
+      // (per product line) where pendingQty > 0 and no 'No Stock' status
       const deliveryHistory = getDeliveryHistory() || [];
       const checkDeliveryCount = receivedOrders.filter(order => {
-        if (!order.isChecked) return false;
+        const checkedProductNumbers = getCheckedProductNumbers(order);
+        if (checkedProductNumbers.length === 0) return false;
         return order.items?.some((item, idx) => {
           const productNumber = `${order.orderId}-${String(idx + 1).padStart(2, '0')}`;
+          if (!checkedProductNumbers.includes(productNumber)) return false;
           const historyForProduct = deliveryHistory.filter(h => h.orderId === order.orderId && h.productNumber === productNumber);
-          
+
           const hasNoStock = historyForProduct.some(h => h.stockStatus === 'No Stock');
           if (hasNoStock) return false;
-          
+
           const totalApproved = historyForProduct.reduce((sum, h) => sum + (parseFloat(h.approveQty) || 0), 0);
           const totalQty = parseFloat(item.qty) || 0;
           return totalQty - totalApproved > 0;
@@ -93,16 +97,18 @@ const Sidebar = ({ isOpen, onClose }) => {
       // 7. Dispatch Planning: orders with 'In Stock' deliveries not yet fully dispatched
       // (a delivery can be dispatched across multiple PARTIAL transactions, so this is
       // judged by remaining quantity, not by whether any dispatch record merely exists)
+      // A delivery is cleared once dispatchQty + cancelQty reaches the total — matches
+      // the "pendingDeliveries" logic in DispatchPlanning/FormDispatch.jsx exactly.
       const dispatchHistory = getDispatchHistory() || [];
       const dispatchCount = receivedOrders.filter(order => {
         const orderDeliveries = deliveryHistory.filter(d => d.orderId === order.orderId && d.stockStatus === 'In Stock');
         if (orderDeliveries.length === 0) return false;
         return orderDeliveries.some(delivery => {
           const availableQty = parseFloat(delivery.approveQty) || parseFloat(delivery.qty) || 0;
-          const dispatchedQty = dispatchHistory
+          const clearedQty = dispatchHistory
             .filter(dh => dh.deliveryApproverId === delivery.deliveryApproverId)
-            .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0), 0);
-          return (availableQty - dispatchedQty) > 0;
+            .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0) + (parseFloat(dh.cancelQty) || 0), 0);
+          return (availableQty - clearedQty) > 0;
         });
       }).length;
 
@@ -171,7 +177,61 @@ const Sidebar = ({ isOpen, onClose }) => {
         });
       }).length;
 
-      setCounts({ 
+      // 14. Payments: pending Advance + Vendor + Freight, mirrors each tab's own "Pending" logic
+      const paymentHistory = getPaymentHistory() || [];
+
+      const pendingAdvanceCount = receivedOrders.filter(order => {
+        if (order.advancePayment !== 'Yes') return false;
+        const totalPaid = paymentHistory
+          .filter(p => p.orderId === order.orderId && p.paymentType === 'Advance')
+          .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+        const requiredAdvance = parseFloat(order.advanceAmount || 0);
+        return totalPaid < requiredAdvance;
+      }).length;
+
+      const pendingVendorCount = receivedOrders.filter(order => {
+        const orderInvoices = invoiceHistory.filter(inv => inv.orderId === order.orderId);
+        const seen = new Set();
+        let totalInvoicedValue = 0;
+        orderInvoices.forEach(inv => {
+          if (inv.invoiceNumber && !seen.has(inv.invoiceNumber)) {
+            seen.add(inv.invoiceNumber);
+            totalInvoicedValue += parseFloat(inv.invoiceAmount || 0);
+          }
+        });
+        const effectivePOValue = totalInvoicedValue > 0 ? totalInvoicedValue : parseFloat(order.totalPOValue || 0);
+
+        const totalAdvancePaid = paymentHistory
+          .filter(p => p.orderId === order.orderId && p.paymentType === 'Advance')
+          .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+        const requiredAdvance = parseFloat(order.advanceAmount || 0);
+        if (order.advancePayment === 'Yes' && totalAdvancePaid < requiredAdvance) return false;
+
+        const totalVendorPaid = paymentHistory
+          .filter(p => p.orderId === order.orderId && p.paymentType === 'Vendor')
+          .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+
+        return (effectivePOValue - totalAdvancePaid - totalVendorPaid) > 0;
+      }).length;
+
+      const freightOrderIds = new Set();
+      let pendingFreightCount = 0;
+      logisticHistory.forEach(record => {
+        if (freightOrderIds.has(record.orderId)) return;
+        freightOrderIds.add(record.orderId);
+
+        const itemsForOrder = logisticHistory.filter(r => r.orderId === record.orderId);
+        const totalFreightPaid = paymentHistory
+          .filter(p => p.orderId === record.orderId && p.paymentType === 'Freight')
+          .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+        const totalFreightExpected = itemsForOrder.reduce((sum, r) => sum + parseFloat(r.transporterAmount || 0), 0);
+
+        if (totalFreightExpected > 0 && (totalFreightExpected - totalFreightPaid) > 0) pendingFreightCount++;
+      });
+
+      const paymentCount = pendingAdvanceCount + pendingVendorCount + pendingFreightCount;
+
+      setCounts({
         management: managementCount,
         checkValidation: checkValidationCount,
         checkDelivery: checkDeliveryCount,
@@ -180,7 +240,8 @@ const Sidebar = ({ isOpen, onClose }) => {
         logistic: logisticCount,
         callan: callanCount,
         invoice: invoiceCount,
-        confirmDelivery: confirmCount
+        confirmDelivery: confirmCount,
+        payment: paymentCount
       });
     };
 
@@ -210,7 +271,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/make-callan',         icon: FileText,       label: 'Make Callan', count: counts.callan },
     { path: '/make-invoice',        icon: Receipt,        label: 'Make Invoice', count: counts.invoice },
     { path: '/confirm-delivery',    icon: CheckCircle,    label: 'Confirm Delivery', count: counts.confirmDelivery },
-    { path: '/payment',             icon: Coins,          label: 'Payments' },
+    { path: '/payment',             icon: Coins,          label: 'Payments', count: counts.payment },
     { path: '/setting',             icon: Settings,       label: 'Setting' },
     { path: '/master',              icon: LayoutGrid,     label: 'Master' },
   ];
@@ -227,7 +288,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/make-callan', icon: FileText, label: 'Make Callan', count: counts.callan },
     { path: '/make-invoice', icon: Receipt, label: 'Make Invoice', count: counts.invoice },
     { path: '/confirm-delivery', icon: CheckCircle, label: 'Confirm Delivery', count: counts.confirmDelivery },
-    { path: '/payment', icon: Coins, label: 'Payments' },
+    { path: '/payment', icon: Coins, label: 'Payments', count: counts.payment },
     { path: '/master',        icon: LayoutGrid, label: 'Master' },
   ];
 
@@ -254,7 +315,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
                 <Users size={20} className="text-white" />
               </div>
-              <span className="text-xl font-bold text-indigo-600 tracking-tight">Botivate</span>
+              <span className="text-xl font-bold text-indigo-600 tracking-tight">Neutech</span>
             </div>
             <button onClick={onClose} className="lg:hidden p-2 hover:bg-indigo-100/50 rounded-lg">
               <X size={20} className="text-indigo-600" />

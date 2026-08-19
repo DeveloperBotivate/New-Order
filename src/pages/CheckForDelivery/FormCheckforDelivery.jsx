@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, CheckCircle, Package } from 'lucide-react';
-import { saveDeliveryTransaction, getDeliveryHistory } from '../../utils/storageManager';
+import { saveDeliveryTransaction, getDeliveryHistory, getCheckedProductNumbers } from '../../utils/storageManager';
 import toast from 'react-hot-toast';
 
 export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
   const [items, setItems] = useState(() => {
     const history = getDeliveryHistory() || [];
+    const checkedProductNumbers = getCheckedProductNumbers(order);
     return order.items?.map((item, idx) => {
       const productNumber = `${order.orderId}-${String(idx + 1).padStart(2, '0')}`;
       const prodHist = history.filter(h => h.orderId === order.orderId && h.productNumber === productNumber);
-      
+
       const hasNoStock = prodHist.some(h => h.stockStatus === 'No Stock');
       const itemApproveQty = prodHist.reduce((sum, h) => sum + (parseFloat(h.approveQty) || 0), 0);
       const itemPendingQty = (parseFloat(item.qty) || 0) - itemApproveQty;
+      const notYetValidated = !checkedProductNumbers.includes(productNumber);
 
       return {
         ...item,
@@ -25,15 +27,34 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
         remarks: '',
         _approvedQty: itemApproveQty,
         _pendingQty: itemPendingQty,
-        _isCompleted: hasNoStock || itemPendingQty <= 0
+        _isCompleted: hasNoStock || itemPendingQty <= 0 || notYetValidated
       };
     }).filter(item => !item._isCompleted) || [];
   });
 
+  // Row selection — lets the user act on only some products this round and leave
+  // the rest pending for a later pass, instead of being forced to fill every row
+  // in the modal before anything can be saved. All rows start selected to match
+  // the previous "process everything shown" behavior.
+  const [selected, setSelected] = useState(() => new Set(items.map(i => i.productNumber)));
+  const allSelected = items.length > 0 && items.every(i => selected.has(i.productNumber));
+
+  const toggleSelect = (productNumber) => {
+    const next = new Set(selected);
+    if (next.has(productNumber)) next.delete(productNumber);
+    else next.add(productNumber);
+    setSelected(next);
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(items.map(i => i.productNumber)));
+  };
+
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
-    
+
     if (field === 'stockStatus') {
       if (value === 'No Stock') {
         newItems[index].approveQty = '';
@@ -49,9 +70,14 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
   };
 
   const handleSave = () => {
-    // Validate
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    const itemsToSave = items.filter(item => selected.has(item.productNumber));
+    if (itemsToSave.length === 0) {
+      return toast.error('Select at least one product row to save.');
+    }
+
+    // Validate only the selected rows — unselected rows stay pending untouched
+    for (let i = 0; i < itemsToSave.length; i++) {
+      const item = itemsToSave[i];
       if (!item.stockStatus) {
         return toast.error(`Please select Stock Status for ${item.productName}`);
       }
@@ -63,7 +89,7 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
     }
 
     // Attach order context to each delivered item
-    const deliveryItems = items.map(item => ({
+    const deliveryItems = itemsToSave.map(item => ({
       ...item,
       orderId: order.orderId,
       division: order.division,
@@ -74,7 +100,11 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
     }));
 
     saveDeliveryTransaction(deliveryItems);
-    toast.success('Delivery Check Saved!');
+    toast.success(
+      itemsToSave.length < items.length
+        ? `${itemsToSave.length} item(s) saved. Remaining items stay pending.`
+        : 'Delivery Check Saved!'
+    );
     if (onSuccess) onSuccess();
   };
 
@@ -149,11 +179,25 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
 
           {/* Product Items Table */}
           <div>
-            <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Delivery Items</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[10px] uppercase font-bold text-indigo-600 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Delivery Items</h3>
+              <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
+                {selected.size}/{items.length} selected
+              </span>
+            </div>
             <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto shadow-sm">
               <table className="w-full text-left border-collapse min-w-[1300px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-3 font-bold text-center w-10">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        checked={allSelected}
+                        disabled={items.length === 0}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Product Number</th>
                     <th className="px-3 py-3 font-bold whitespace-nowrap">Product Name</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Qty</th>
@@ -176,8 +220,18 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
                     const gstValue = basic * (gstPerc / 100);
                     const grandTotal = basic + gstValue;
 
+                    const isSelected = selected.has(prod.productNumber);
+
                     return (
-                      <tr key={idx} className="hover:bg-gray-50/50">
+                      <tr key={idx} className={`hover:bg-gray-50/50 ${isSelected ? '' : 'opacity-50'}`}>
+                        <td className="px-3 py-3 text-center align-top">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                            checked={isSelected}
+                            onChange={() => toggleSelect(prod.productNumber)}
+                          />
+                        </td>
                         <td className="px-3 py-3 text-xs text-indigo-600 font-bold align-top text-center">{prod.productNumber}</td>
                         <td className="px-3 py-3 text-xs text-gray-800 font-medium align-top">{prod.productName}</td>
                         <td className="px-3 py-3 text-xs text-gray-700 text-center align-top font-bold bg-gray-50">{prod.qty}</td>
@@ -258,7 +312,8 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
           </button>
           <button
             onClick={handleSave}
-            className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm"
+            disabled={selected.size === 0}
+            className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 shadow-sm"
           >
             <CheckCircle size={16} /> Save Delivery
           </button>

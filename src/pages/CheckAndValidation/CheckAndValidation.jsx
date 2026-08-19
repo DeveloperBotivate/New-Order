@@ -29,8 +29,16 @@ export default function CheckAndValidation() {
   const handleClearFilters = () =>
     setFilters({ searchQuery: '', fromDate: '', toDate: '', division: '', partyName: '' });
 
-  const pendingItems = useMemo(() => orders.filter(o => !o.isChecked).reverse(), [orders]);
-  const historyItems = useMemo(() => orders.filter(o => o.isChecked).reverse(), [orders]);
+  const pendingItems = useMemo(() => orders.filter(o => {
+    const checkedCount = o.checkedProductNumbers?.length || 0;
+    const totalCount = o.items?.length || 0;
+    return checkedCount < totalCount;
+  }).reverse(), [orders]);
+
+  const historyItems = useMemo(() => orders.filter(o => {
+    const checkedCount = o.checkedProductNumbers?.length || 0;
+    return checkedCount > 0;
+  }).reverse(), [orders]);
 
   const divisionOptions = useMemo(() =>
     Array.from(new Set(orders.map(i => i.division))).filter(Boolean).sort().map(d => ({ value: d, label: d }))

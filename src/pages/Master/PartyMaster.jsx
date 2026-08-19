@@ -17,13 +17,12 @@ export default function PartyMaster({ searchQuery, triggerAdd }) {
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, type: 'success', title: '', message: '', onConfirm: () => {} });
 
   const [formData, setFormData] = useState({
-    name: '', gst: '', email: '', phone: '', address: '', locationLink: '', responsiblePerson: '',
-    paymentTerms: ['', '']
+    name: '', gst: '', email: '', phone: '', address: '', locationLink: '', responsiblePerson: ''
   });
 
   const headers = [
     'Actions', 'Timestamp', 'VN-NO', 'Party Name', 'Party GST', 'Party Email',
-    'Party Phone NO.', 'Responsible Person Name', 'Payment Terms', 'Party Address',
+    'Party Phone NO.', 'Responsible Person Name', 'Party Address',
     'Party Location Link'
   ];
 
@@ -43,8 +42,7 @@ export default function PartyMaster({ searchQuery, triggerAdd }) {
         v.vnNo?.toLowerCase().includes(q) ||
         v.email?.toLowerCase().includes(q) ||
         v.phone?.toLowerCase().includes(q) ||
-        v.gst?.toLowerCase().includes(q) ||
-        v.paymentTerms?.some(t => t.toLowerCase().includes(q))
+        v.gst?.toLowerCase().includes(q)
       );
     });
   }, [parties, searchQuery]);
@@ -55,25 +53,14 @@ export default function PartyMaster({ searchQuery, triggerAdd }) {
 
   const handleAdd = () => {
     setEditingId(null);
-    setFormData({ name: '', gst: '', email: '', phone: '', address: '', locationLink: '', responsiblePerson: '', paymentTerms: ['', ''] });
+    setFormData({ name: '', gst: '', email: '', phone: '', address: '', locationLink: '', responsiblePerson: '' });
     setShowModal(true);
   };
 
   const handleEdit = (party) => {
     setEditingId(party.id);
-    setFormData({ ...party, paymentTerms: party.paymentTerms && party.paymentTerms.length > 0 ? party.paymentTerms : ['', ''] });
+    setFormData({ ...party });
     setShowModal(true);
-  };
-
-  const handleAddTerm = () => setFormData({ ...formData, paymentTerms: [...formData.paymentTerms, ''] });
-  const handleRemoveTerm = (index) => {
-    const updated = formData.paymentTerms.filter((_, i) => i !== index);
-    setFormData({ ...formData, paymentTerms: updated.length > 0 ? updated : [''] });
-  };
-  const handleTermChange = (index, value) => {
-    const updated = [...formData.paymentTerms];
-    updated[index] = value;
-    setFormData({ ...formData, paymentTerms: updated });
   };
 
   const showAlert = (type, title, message, onConfirm = () => {}) => {
@@ -91,8 +78,7 @@ export default function PartyMaster({ searchQuery, triggerAdd }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const cleanTerms = formData.paymentTerms.filter(t => t.trim() !== '');
-    const finalData = { ...formData, paymentTerms: cleanTerms };
+    const finalData = { ...formData };
 
     if (editingId) {
       const updated = parties.map(v => v.id === editingId ? { ...v, ...finalData } : v);
@@ -133,22 +119,6 @@ export default function PartyMaster({ searchQuery, triggerAdd }) {
       <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">{item.email}</td>
       <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">{item.phone}</td>
       <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap font-medium">{item.responsiblePerson}</td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
-        <InfoPopover items={item.paymentTerms} title="Complete Payment Terms">
-          <div className="flex justify-center items-center gap-1">
-            {item.paymentTerms?.[0] && (
-              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[9px] md:text-[10px] font-bold rounded border border-indigo-100 uppercase">
-                {item.paymentTerms[0]}
-              </span>
-            )}
-            {item.paymentTerms?.length > 1 && (
-              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black rounded border border-amber-200">
-                +{item.paymentTerms.length - 1}
-              </span>
-            )}
-          </div>
-        </InfoPopover>
-      </td>
       <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap truncate max-w-[120px]">{item.address}</td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <a href={item.locationLink} target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:text-sky-800 flex items-center justify-center gap-1 font-bold text-[10px]"><MapPin size={12}/> MAP</a>
@@ -174,7 +144,6 @@ export default function PartyMaster({ searchQuery, triggerAdd }) {
           <div className="space-y-0.5"><p className="text-[8px] text-gray-400 font-bold uppercase">Responsible Person</p><p className="text-[11px] font-bold text-gray-800">{item.responsiblePerson}</p></div>
           <div className="space-y-0.5 text-right"><p className="text-[8px] text-gray-400 font-bold uppercase">Email</p><p className="text-[11px] font-bold text-gray-800 truncate max-w-[100px] ml-auto">{item.email}</p></div>
         </div>
-        <div className="space-y-1.5"><p className="text-[8px] text-gray-400 font-bold uppercase">Payment Terms</p><div className="flex flex-wrap gap-1">{item.paymentTerms?.map((term, i) => (<span key={i} className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[9px] font-bold rounded-md border border-indigo-100 uppercase">{term}</span>))}</div></div>
         <div className="bg-gray-50 p-2 rounded-lg border border-gray-100"><p className="text-[8px] text-gray-400 font-bold uppercase">Address</p><p className="text-[10px] text-gray-700 leading-snug italic">"{item.address}"</p></div>
       </div>
       <div className="pt-2 flex justify-between items-center border-t border-gray-50"><span className="text-[9px] text-gray-400 font-bold">{formatTimestamp(item.timestamp)}</span><a href={item.locationLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sky-600 font-bold text-[9px] bg-sky-50 px-2 py-1 rounded-full"><MapPin size={10}/> View Map</a></div>
@@ -225,25 +194,6 @@ export default function PartyMaster({ searchQuery, triggerAdd }) {
           <div className="space-y-1">
             <label className="block text-[10px] md:text-[12px] font-medium text-gray-700 uppercase tracking-tight">Phone Number *</label>
             <input required type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} className="w-full border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]" />
-          </div>
-        </div>
-
-        <div className="space-y-1.5 pt-2 border-t border-gray-50">
-          <label className="block text-[10px] md:text-[12px] font-medium text-gray-700 uppercase tracking-tight">Payment Terms</label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5">
-            {formData.paymentTerms.map((term, index) => (
-              <div key={index} className="flex gap-2 items-center">
-                <input type="text" value={term} onChange={(e) => handleTermChange(index, e.target.value)} className="flex-1 border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]" placeholder={`Term ${index + 1}`} />
-                <button type="button" onClick={() => handleRemoveTerm(index)} className="text-red-400 hover:text-red-600 transition-all">
-                  <Minus size={16}/>
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end pt-1">
-            <button type="button" onClick={handleAddTerm} className="flex items-center gap-1.5 text-[10px] font-black bg-indigo-600 text-white px-3 py-1.5 rounded shadow-sm hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-widest">
-              <Plus size={14}/> Add
-            </button>
           </div>
         </div>
 

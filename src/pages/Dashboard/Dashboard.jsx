@@ -124,6 +124,7 @@ export default function Dashboard() {
       pendingValidation: 0,
       validated: 0,
       pendingCheckForDelivery: 0,
+      checkedForDelivery: 0,
 
       // Production
       pendingProduction: 0,
@@ -164,6 +165,7 @@ export default function Dashboard() {
       } else {
         s.validated++;
         if (orderDeliv.length === 0) s.pendingCheckForDelivery++;
+        else s.checkedForDelivery++;
       }
       
       // Production
@@ -180,10 +182,10 @@ export default function Dashboard() {
 
       // Un-dispatched in-stock items
       orderDeliv.forEach(deliv => {
-        if (deliv.stockStatus === 'In Stock') {
+        if (deliv.stockStatus === 'In Stock' || (deliv.stockStatus === 'No Stock' && deliv.produced)) {
           const dispatchedQty = orderDisp
             .filter(dh => dh.deliveryApproverId === deliv.deliveryApproverId)
-            .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0), 0);
+            .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0) + (parseFloat(dh.cancelQty) || 0), 0);
           const available = parseFloat(deliv.approveQty) || 0;
           if (available - dispatchedQty > 0) s.pendingDispatch++;
         }
@@ -334,76 +336,103 @@ export default function Dashboard() {
       </div>
 
       {/* Order Pipeline Breakdown */}
-      <h2 className="text-sm font-black text-gray-800 uppercase tracking-wider mt-6 mb-2 border-b border-gray-200 pb-2">Order Pipeline Breakdown (Pending Items)</h2>
+      <h2 className="text-sm font-black text-gray-800 uppercase tracking-wider mt-6 mb-2 border-b border-gray-200 pb-2">Order Pipeline Breakdown</h2>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-6">
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Received Order</span>
-              <span className="text-sm font-black text-indigo-600">{stats.totalOrders}</span>
+              <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100" title="Total">T: {stats.totalOrders}</span>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-indigo-500 h-1.5 rounded-full" style={{width: `100%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Check & Validation</span>
-              <span className="text-sm font-black text-amber-600">{stats.pendingValidation}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {stats.pendingValidation}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.validated}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingValidation / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Check For Delivery</span>
-              <span className="text-sm font-black text-amber-600">{stats.pendingCheckForDelivery}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {stats.pendingCheckForDelivery}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.checkedForDelivery}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingCheckForDelivery / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Production Planning</span>
-              <span className="text-sm font-black text-amber-600">{stats.pendingProduction}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {stats.pendingProduction}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.produced}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingProduction / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Dispatch Planning</span>
-              <span className="text-sm font-black text-amber-600">{stats.pendingDispatch}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {stats.pendingDispatch}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.dispatched}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingDispatch / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Packaging</span>
-              <span className="text-sm font-black text-amber-600">{stats.pendingPackaging}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {stats.pendingPackaging}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.packaged}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (stats.pendingPackaging / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Vehicle Logistic</span>
-              <span className="text-sm font-black text-amber-600">{Math.max(0, stats.totalOrders - stats.logisticsAssigned)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {Math.max(0, stats.totalOrders - stats.logisticsAssigned)}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.logisticsAssigned}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (Math.max(0, stats.totalOrders - stats.logisticsAssigned) / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Make Callan</span>
-              <span className="text-sm font-black text-amber-600">{Math.max(0, stats.totalOrders - stats.callansGenerated)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {Math.max(0, stats.totalOrders - stats.callansGenerated)}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.callansGenerated}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (Math.max(0, stats.totalOrders - stats.callansGenerated) / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Make Invoice</span>
-              <span className="text-sm font-black text-amber-600">{Math.max(0, stats.totalOrders - stats.invoicesGenerated)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {Math.max(0, stats.totalOrders - stats.invoicesGenerated)}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.invoicesGenerated}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (Math.max(0, stats.totalOrders - stats.invoicesGenerated) / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>
           <div className="flex flex-col space-y-1">
             <div className="flex justify-between items-end">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Confirm Delivery</span>
-              <span className="text-sm font-black text-amber-600">{Math.max(0, stats.totalOrders - stats.delivered)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100" title="Pending">P: {Math.max(0, stats.totalOrders - stats.delivered)}</span>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" title="Completed">C: {stats.delivered}</span>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{width: `${Math.min(100, (Math.max(0, stats.totalOrders - stats.delivered) / (stats.totalOrders || 1)) * 100)}%`}}></div></div>
           </div>

@@ -15,10 +15,10 @@ export default function TransporterAgency({ searchQuery, triggerAdd }) {
 
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, type: 'success', title: '', message: '', onConfirm: () => {} });
 
-  const initialEntry = { name: '', vehicleNo: '', driverName: '', mobile: '', lr: '' };
+  const initialEntry = { name: '', vehicleNo: '', driverName: '', mobile: '' };
   const [entries, setEntries] = useState([initialEntry]);
 
-  const headers = ['Actions', 'Timestamp', 'TA-NO', 'Transport Agency', 'Vehicle Plate No.', 'Driver Full Name', 'Driver Mobile', 'Lorry Receipt (LR)'];
+  const headers = ['Actions', 'Timestamp', 'TA-NO', 'Transport Agency', 'Vehicle Plate No.', 'Driver Full Name', 'Driver Mobile'];
 
   useEffect(() => {
     setData(getTransporterAgencies());
@@ -36,8 +36,7 @@ export default function TransporterAgency({ searchQuery, triggerAdd }) {
         item.taNo?.toLowerCase().includes(q) ||
         item.vehicleNo?.toLowerCase().includes(q) ||
         item.driverName?.toLowerCase().includes(q) ||
-        item.mobile?.toLowerCase().includes(q) ||
-        item.lr?.toLowerCase().includes(q)
+        item.mobile?.toLowerCase().includes(q)
       );
     });
   }, [data, searchQuery]);
@@ -54,7 +53,7 @@ export default function TransporterAgency({ searchQuery, triggerAdd }) {
 
   const handleEdit = (item) => {
     setEditingId(item.id);
-    setEntries([{ name: item.name, vehicleNo: item.vehicleNo, driverName: item.driverName, mobile: item.mobile, lr: item.lr }]);
+    setEntries([{ name: item.name, vehicleNo: item.vehicleNo, driverName: item.driverName, mobile: item.mobile }]);
     setShowModal(true);
   };
 
@@ -132,7 +131,6 @@ export default function TransporterAgency({ searchQuery, triggerAdd }) {
       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{item.vehicleNo}</td>
       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{item.driverName}</td>
       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{item.mobile}</td>
-      <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{item.lr}</td>
     </tr>
   );
 
@@ -149,7 +147,6 @@ export default function TransporterAgency({ searchQuery, triggerAdd }) {
         <p className="text-xs text-gray-600"><span className="font-semibold text-gray-800">Vehicle:</span> {item.vehicleNo}</p>
         <p className="text-xs text-gray-600"><span className="font-semibold text-gray-800">Driver:</span> {item.driverName}</p>
         <p className="text-xs text-gray-600"><span className="font-semibold text-gray-800">Mobile:</span> {item.mobile}</p>
-        <p className="text-xs text-gray-600"><span className="font-semibold text-gray-800">LR:</span> {item.lr}</p>
       </div>
       <div className="pt-2 flex justify-between items-center border-t border-gray-50">
         <span className="text-[10px] text-gray-400 font-medium">{formatTimestamp(item.timestamp)}</span>
@@ -235,16 +232,6 @@ export default function TransporterAgency({ searchQuery, triggerAdd }) {
                     onChange={(e) => handleEntryChange(index, 'mobile', e.target.value)}
                     className="w-full border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-sm"
                     placeholder="Mobile No."
-                  />
-                </div>
-                <div className="flex-1 space-y-1 w-full">
-                  <label className="block text-[10px] font-medium text-gray-700 uppercase tracking-tight">Lorry Receipt (LR)</label>
-                  <input
-                    type="text"
-                    value={entry.lr}
-                    onChange={(e) => handleEntryChange(index, 'lr', e.target.value)}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-sm"
-                    placeholder="LR No."
                   />
                 </div>
                 {!editingId && entries.length > 1 && (

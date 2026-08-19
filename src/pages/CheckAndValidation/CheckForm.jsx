@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, CheckCircle, ShieldCheck } from 'lucide-react';
-import { updateReceivedOrder } from '../../utils/storageManager';
+import { X, ShieldCheck, ArrowRightCircle, CheckCheck } from 'lucide-react';
+import { updateReceivedOrder, getCheckedProductNumbers } from '../../utils/storageManager';
 import toast from 'react-hot-toast';
 
 export default function CheckForm({ order, onClose, onSuccess, isReadOnly = false }) {
@@ -12,24 +12,70 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
     remarks: order.validationChecklist?.remarks || ''
   });
 
+  // Product numbers that have already been moved on to Check For Delivery in a previous pass
+  const movedProductNumbers = new Set(getCheckedProductNumbers(order));
+
+  const productItems = (order.items || []).map((prod, idx) => ({
+    ...prod,
+    productNumber: `${order.orderId}-${String(idx + 1).padStart(2, '0')}`
+  }));
+
+  // Rows still pending validation are selected by default, matching the old "move everything" behavior
+  const [selected, setSelected] = useState(
+    () => new Set(productItems.filter(p => !movedProductNumbers.has(p.productNumber)).map(p => p.productNumber))
+  );
+
+  const pendingItems = productItems.filter(p => !movedProductNumbers.has(p.productNumber));
+  const allPendingSelected = pendingItems.length > 0 && pendingItems.every(p => selected.has(p.productNumber));
+
+  const toggleSelect = (productNumber) => {
+    if (isReadOnly || movedProductNumbers.has(productNumber)) return;
+    const next = new Set(selected);
+    if (next.has(productNumber)) next.delete(productNumber);
+    else next.add(productNumber);
+    setSelected(next);
+  };
+
+  const toggleSelectAll = () => {
+    if (isReadOnly) return;
+    if (allPendingSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(pendingItems.map(p => p.productNumber)));
+    }
+  };
+
   const handleSave = () => {
-    // Validate if required
+    const selectedList = Array.from(selected);
+    if (selectedList.length === 0) {
+      toast.error('Select at least one product row to move to the next step.');
+      return;
+    }
+
+    const checkedProductNumbers = Array.from(new Set([...movedProductNumbers, ...selectedList]));
+    const isFullyChecked = checkedProductNumbers.length === productItems.length;
+
     const updatedOrder = {
       ...order,
-      isChecked: true,
+      isChecked: isFullyChecked,
+      checkedProductNumbers,
       validationChecklist: checklist,
       validatedAt: new Date().toISOString()
     };
 
     updateReceivedOrder(updatedOrder);
-    toast.success('Validation Checklist Saved!');
+    toast.success(
+      isFullyChecked
+        ? 'Validation Checklist Saved! Order moved to Check For Delivery.'
+        : `${selectedList.length} item(s) moved to Check For Delivery. Remaining items stay pending validation.`
+    );
     if (onSuccess) onSuccess();
   };
 
   return createPortal(
     <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center z-[100] p-2 sm:p-6 overflow-y-auto" onClick={onClose}>
-      <div 
-        className="bg-white rounded-2xl w-full max-w-4xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 my-auto" 
+      <div
+        className="bg-white rounded-2xl w-full max-w-4xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 my-auto"
         onClick={e => e.stopPropagation()}
         style={{ maxHeight: '90vh' }}
       >
@@ -51,7 +97,7 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
 
         {/* Content (Scrollable) */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-          
+
           {/* Summary Grid */}
           <div className="bg-slate-50 p-4 rounded-xl border border-gray-100">
             <h3 className="text-[10px] uppercase font-bold text-gray-400 mb-3 tracking-wider">Order Summary</h3>
@@ -84,16 +130,38 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
                 <p className="text-[10px] text-gray-500 font-medium">GST %</p>
                 <p className="text-sm font-bold text-gray-900">{order.globalGstPercent || '0'}%</p>
               </div>
+              <div>
+                <p className="text-[10px] text-gray-500 font-medium">Transporter Type</p>
+                <p className="text-sm font-bold text-gray-900">{order.transportingType || '-'}</p>
+              </div>
             </div>
           </div>
 
           {/* Product Details Table */}
           <div>
-             <h3 className="text-[10px] uppercase font-bold text-gray-400 mb-3 tracking-wider">Product Details</h3>
+             <div className="flex items-center justify-between mb-3">
+               <h3 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Product Details</h3>
+               {!isReadOnly && (
+                 <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
+                   {movedProductNumbers.size}/{productItems.length} already moved
+                 </span>
+               )}
+             </div>
              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500 uppercase tracking-wider">
+                      {!isReadOnly && (
+                        <th className="px-4 py-3 font-bold text-center w-10">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                            checked={allPendingSelected}
+                            disabled={pendingItems.length === 0}
+                            onChange={toggleSelectAll}
+                          />
+                        </th>
+                      )}
                       <th className="px-4 py-3 font-bold">Product Number</th>
                       <th className="px-4 py-3 font-bold">Product Name</th>
                       <th className="px-4 py-3 font-bold text-center">Qty</th>
@@ -106,13 +174,30 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {order.items?.map((prod, idx) => {
+                    {productItems.map((prod, idx) => {
                       const basic = (parseFloat(prod.qty) || 0) * (parseFloat(prod.priceRate) || 0);
                       const gstPerc = parseFloat(prod.gstPercent || order.globalGstPercent || '0');
                       const gstValue = basic * (gstPerc / 100);
+                      const isMoved = movedProductNumbers.has(prod.productNumber);
                       return (
-                        <tr key={idx} className="hover:bg-gray-50/50">
-                          <td className="px-4 py-3 text-xs text-indigo-600 font-bold">{`${order.orderId}-${String(idx + 1).padStart(2, '0')}`}</td>
+                        <tr key={idx} className={`hover:bg-gray-50/50 ${isMoved ? 'opacity-60' : ''}`}>
+                          {!isReadOnly && (
+                            <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              {isMoved ? (
+                                <span title="Already moved to next step" className="inline-flex items-center justify-center text-emerald-500">
+                                  <CheckCheck size={16} />
+                                </span>
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                                  checked={selected.has(prod.productNumber)}
+                                  onChange={() => toggleSelect(prod.productNumber)}
+                                />
+                              )}
+                            </td>
+                          )}
+                          <td className="px-4 py-3 text-xs text-indigo-600 font-bold">{prod.productNumber}</td>
                           <td className="px-4 py-3 text-xs text-gray-800 font-medium">{prod.productName}</td>
                           <td className="px-4 py-3 text-xs text-gray-700 text-center">{prod.qty}</td>
                           <td className="px-4 py-3 text-xs text-gray-500 text-center">{prod.uom}</td>
@@ -126,16 +211,16 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
                     })}
                     {/* Financial Summary Rows */}
                     <tr className="bg-gray-50/50 border-t-2 border-gray-200">
-                      <td colSpan={7} className="px-4 py-2 text-xs font-bold text-gray-600 text-right">Total PO Value:</td>
+                      <td colSpan={isReadOnly ? 7 : 8} className="px-4 py-2 text-xs font-bold text-gray-600 text-right">Total PO Value:</td>
                       <td colSpan={2} className="px-4 py-2 text-xs font-bold text-gray-900 text-right">₹{order.totalPOValue?.toFixed(2)}</td>
                     </tr>
                     <tr className="bg-gray-50/50">
-                      <td colSpan={7} className="px-4 py-2 text-xs font-bold text-gray-600 text-right">Advance Payment:</td>
+                      <td colSpan={isReadOnly ? 7 : 8} className="px-4 py-2 text-xs font-bold text-gray-600 text-right">Advance Payment:</td>
                       <td colSpan={2} className="px-4 py-2 text-xs font-bold text-gray-900 text-right">{order.advancePayment}</td>
                     </tr>
                     {order.advancePayment === 'Yes' && (
                       <tr className="bg-gray-50/50">
-                        <td colSpan={7} className="px-4 py-2 text-xs font-bold text-gray-600 text-right">Advance Amount:</td>
+                        <td colSpan={isReadOnly ? 7 : 8} className="px-4 py-2 text-xs font-bold text-gray-600 text-right">Advance Amount:</td>
                         <td colSpan={2} className="px-4 py-2 text-xs font-bold text-gray-900 text-right">₹{order.advanceAmount}</td>
                       </tr>
                     )}
@@ -148,10 +233,10 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
           <div>
             <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Technical & Commercial Validation Checklist</h3>
             <div className="space-y-3 bg-white p-4 rounded-xl border border-gray-200">
-              
+
               <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${checklist.catalogPricing ? 'border-indigo-500 bg-indigo-50/30' : 'border-gray-200 hover:bg-gray-50'}`}>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
                   checked={checklist.catalogPricing}
                   onChange={(e) => !isReadOnly && setChecklist({...checklist, catalogPricing: e.target.checked})}
@@ -161,8 +246,8 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
               </label>
 
               <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${checklist.gstCompliance ? 'border-indigo-500 bg-indigo-50/30' : 'border-gray-200 hover:bg-gray-50'}`}>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
                   checked={checklist.gstCompliance}
                   onChange={(e) => !isReadOnly && setChecklist({...checklist, gstCompliance: e.target.checked})}
@@ -172,8 +257,8 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
               </label>
 
               <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${checklist.transportationType ? 'border-indigo-500 bg-indigo-50/30' : 'border-gray-200 hover:bg-gray-50'}`}>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
                   checked={checklist.transportationType}
                   onChange={(e) => !isReadOnly && setChecklist({...checklist, transportationType: e.target.checked})}
@@ -211,9 +296,10 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
           {!isReadOnly && (
             <button
               onClick={handleSave}
-              className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm"
+              disabled={selected.size === 0}
+              className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 shadow-sm"
             >
-              <CheckCircle size={16} /> Save Validation
+              <ArrowRightCircle size={16} /> Move Selected to Next Step
             </button>
           )}
         </div>

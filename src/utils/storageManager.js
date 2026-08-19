@@ -48,8 +48,8 @@ const STORAGE_KEYS = {
 // Initialize default data
 const DEFAULT_USERS = [
   { id: 'admin', name: 'Admin User', password: 'admin123', role: 'ADMIN', division: 'Management', accessPages: ['/received-order', '/check-validation', '/check-delivery', '/production', '/dispatch-planning', '/packaging', '/vehicle-logistic', '/make-callan', '/make-invoice', '/confirm-delivery', '/payment', '/master'] },
-  { id: 'user', name: 'Employee 1', password: 'user123', role: 'USER', division: 'Logistics', accessPages: ['/received-order', '/check-validation', '/check-delivery'] },
-  { id: 'user2', name: 'Employee 2', password: 'user123', role: 'USER', division: 'Production', accessPages: ['/production', '/dispatch-planning', '/packaging'] }
+  { id: 'user', name: 'Employee 1', password: 'user123', role: 'USER', division: 'Nutech Composite', accessPages: ['/received-order', '/check-validation', '/check-delivery'] },
+  { id: 'user2', name: 'Employee 2', password: 'user123', role: 'USER', division: 'Nutech Pipes', accessPages: ['/production', '/dispatch-planning', '/packaging'] }
 ];
 
 const DEFAULT_SETTINGS = {
@@ -66,8 +66,30 @@ const DEFAULT_COMPANIES = [];
 
 // Initialize storage with defaults
 export const initializeStorage = () => {
-  if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
+  const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+  if (!storedUsers) {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
+  } else {
+    // Migration: Update dummy users to new divisions
+    let users = JSON.parse(storedUsers);
+    let changed = false;
+    users = users.map(u => {
+      if (u.id === 'user' && u.division === 'Logistics') { changed = true; return { ...u, division: 'Nutech Composite' }; }
+      if (u.id === 'user2' && u.division === 'Production') { changed = true; return { ...u, division: 'Nutech Pipes' }; }
+      return u;
+    });
+    if (changed) {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+      // Also update authUser if it's currently logged in
+      const auth = localStorage.getItem('user');
+      if (auth) {
+        const authUser = JSON.parse(auth);
+        if (authUser.id === 'user' || authUser.id === 'user2') {
+          const updatedAuth = users.find(u => u.id === authUser.id);
+          localStorage.setItem('user', JSON.stringify(updatedAuth));
+        }
+      }
+    }
   }
 
   if (!localStorage.getItem(STORAGE_KEYS.SETTINGS)) {
@@ -711,6 +733,49 @@ export const saveMasterItem = (item) => {
   saveMasterItems(items);
 };
 
+// --- IMS (Inventory Management System) Stock Lookup — DUMMY INTEGRATION ---
+// TODO: Replace this with a real call to the IMS API once it's connected.
+// Until then this simulates "live" current stock per product so forms can show
+// on-hand quantity the moment a product is selected.
+const IMS_DUMMY_STOCK = {
+  'Steel Pipe 2 Inch': 340,
+  'Cement Bag 50kg': 120,
+  'Copper Wire 1.5mm': 860,
+  'LED Bulb 9W': 500,
+  'PVC Pipe 4 Inch': 275,
+  'Paint Bucket White': 64,
+  'Safety Helmet': 150,
+  'Welding Rod 3.15mm': 210,
+  'Diesel Fuel': 1200,
+  'Grinding Wheel 4 Inch': 95,
+  'Cotton Gloves': 800,
+  'Plywood Sheet 12mm': 40,
+  'Nut Bolt Set M8': 300,
+  'Industrial Grease': 55,
+  'Rubber Gasket': 620,
+  'Aluminium Sheet 1mm': 78,
+  'Cable Tie 200mm': 410,
+  'Hydraulic Oil': 180,
+  'Fire Extinguisher 5kg': 32,
+  'Packing Tape Roll': 900
+};
+
+// Returns the current IMS stock quantity for a product name. Known catalog items
+// use fixed dummy quantities above; anything else (custom items) gets a stable
+// pseudo-random quantity derived from its name so the same product always shows
+// the same "current stock" during a session instead of jumping around.
+export const getIMSStock = (productName) => {
+  if (!productName) return null;
+  if (Object.prototype.hasOwnProperty.call(IMS_DUMMY_STOCK, productName)) {
+    return IMS_DUMMY_STOCK[productName];
+  }
+  let hash = 0;
+  for (let i = 0; i < productName.length; i++) {
+    hash = (hash * 31 + productName.charCodeAt(i)) >>> 0;
+  }
+  return (hash % 200) + 10;
+};
+
 // Group Head Functions
 export const getGroupHeads = () => {
   const heads = getFromStorage(STORAGE_KEYS.GROUP_HEADS) || [];
@@ -895,6 +960,15 @@ export const savePerson = (item) => {
 // Received Order Functions
 export const getReceivedOrders = () => {
   const orders = getFromStorage(STORAGE_KEYS.RECEIVED_ORDERS) || [];
+  try {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user && user.role !== 'ADMIN' && user.division && user.division !== 'Management') {
+        return orders.filter(order => order.division === user.division);
+      }
+    }
+  } catch (e) {}
   return orders;
 };
 export const saveReceivedOrders = (data) => saveToStorage(STORAGE_KEYS.RECEIVED_ORDERS, data);
@@ -910,6 +984,18 @@ export const updateReceivedOrder = (updatedItem) => {
     data[index] = updatedItem;
     saveReceivedOrders(data);
   }
+};
+
+// Returns the product numbers (e.g. "OR-002-01") of an order's items that have
+// already passed Check & Validation and can move on to Check For Delivery.
+// Falls back to treating every item as checked when an order was fully
+// validated before per-item tracking existed (order.isChecked with no list).
+export const getCheckedProductNumbers = (order) => {
+  if (order.checkedProductNumbers) return order.checkedProductNumbers;
+  if (order.isChecked) {
+    return (order.items || []).map((_, idx) => `${order.orderId}-${String(idx + 1).padStart(2, '0')}`);
+  }
+  return [];
 };
 
 // Delivery History Functions
@@ -1029,6 +1115,15 @@ export const savePackagingTransaction = (items) => {
 // Logistic History Functions
 export const getLogisticHistory = () => {
   const history = getFromStorage(STORAGE_KEYS.LOGISTIC_HISTORY) || [];
+  try {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user && user.role !== 'ADMIN' && user.division && user.division !== 'Management') {
+        return history.filter(record => record.division === user.division);
+      }
+    }
+  } catch (e) {}
   return history;
 };
 
@@ -1046,6 +1141,25 @@ export const saveLogisticTransaction = (items) => {
   
   history.push(...newRecords);
   saveLogisticHistory(history);
+};
+
+// Fills in Bilty Number / Bilty Copy for every logistic record of an order —
+// used when these were skipped at the Vehicle Logistic step and get captured
+// later (e.g. from the Freight Payment screen). Never blanks an existing value.
+export const updateLogisticBiltyDetails = (orderId, { lrNumber, lrCopy } = {}) => {
+  const history = getLogisticHistory();
+  const updated = history.map(record => {
+    if (record.orderId !== orderId) return record;
+    const nextLrNumber = lrNumber ? lrNumber : record.lrNumber;
+    const nextLrCopy = lrCopy ? lrCopy : record.lrCopy;
+    return {
+      ...record,
+      lrNumber: nextLrNumber,
+      lrCopy: nextLrCopy,
+      biltyStatus: nextLrNumber ? 'Yes' : record.biltyStatus
+    };
+  });
+  saveLogisticHistory(updated);
 };
 
 // Agency History Functions

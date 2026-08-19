@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, CheckCircle, FileText, Upload } from 'lucide-react';
 import { saveCallanTransaction, getPackagingHistory, getLogisticHistory, getCallanHistory } from '../../utils/storageManager';
-import { compressImageFile } from '../../utils/helpers';
+import { compressImageFile, validateAttachmentFile, ATTACHMENT_ACCEPT } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
 export default function FormCallan({ order, onClose, onSuccess }) {
@@ -10,7 +10,7 @@ export default function FormCallan({ order, onClose, onSuccess }) {
   const [callanRemarks, setCallanRemarks] = useState('');
   const [callanImagePreview, setCallanImagePreview] = useState(null);
 
-  const [items] = useState(() => {
+  const [items, setItems] = useState(() => {
     const packagingHistory = getPackagingHistory() || [];
     const logisticHistory = getLogisticHistory() || [];
     const callanHistory = getCallanHistory() || [];
@@ -27,12 +27,30 @@ export default function FormCallan({ order, onClose, onSuccess }) {
 
     return itemsReadyForCallan.filter(readyItem => {
       return !callanHistory.some(ch => ch.dispatchId === readyItem.dispatchId);
-    });
+    }).map(item => ({ ...item, _selected: false }));
   });
+
+  const handleItemChange = (index, field, value) => {
+    const newItems = [...items];
+    newItems[index][field] = value;
+    setItems(newItems);
+  };
+
+  const handleSelectAll = (checked) => {
+    const newItems = items.map(item => ({ ...item, _selected: checked }));
+    setItems(newItems);
+  };
+
+  const allSelected = items.length > 0 && items.every(i => i._selected);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const sizeError = validateAttachmentFile(file);
+    if (sizeError) {
+      toast.error(sizeError);
+      return;
+    }
     try {
       const compressed = await compressImageFile(file);
       setCallanImagePreview(compressed);
@@ -42,11 +60,16 @@ export default function FormCallan({ order, onClose, onSuccess }) {
   };
 
   const handleSave = () => {
+    const selectedItems = items.filter(i => i._selected);
+    if (selectedItems.length === 0) {
+      return toast.error('Please select at least one item for the Callan');
+    }
+
     if (!callanNo.trim()) {
       return toast.error('Please enter the Callan No');
     }
 
-    const payload = items.map(item => ({
+    const payload = selectedItems.map(item => ({
       ...item,
       callanNo,
       callanRemarks,
@@ -138,6 +161,14 @@ export default function FormCallan({ order, onClose, onSuccess }) {
               <table className="w-full text-left border-collapse min-w-[1200px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-3 font-bold w-[5%] whitespace-nowrap text-center">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                        checked={allSelected}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                    </th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Dispatch ID</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Product Number</th>
                     <th className="px-3 py-3 font-bold whitespace-nowrap">Product Name</th>
@@ -165,7 +196,15 @@ export default function FormCallan({ order, onClose, onSuccess }) {
                     const grandTotal = totalValue + gstValue;
 
                     return (
-                      <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                      <tr key={idx} className={`hover:bg-gray-50/50 transition-colors ${prod._selected ? 'bg-indigo-50/10' : ''}`}>
+                        <td className="px-3 py-3 text-center align-middle">
+                          <input 
+                            type="checkbox"
+                            checked={prod._selected}
+                            onChange={(e) => handleItemChange(idx, '_selected', e.target.checked)}
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                          />
+                        </td>
                         <td className="px-3 py-3 text-[11px] text-indigo-600 font-bold text-center align-middle">{prod.dispatchId || '-'}</td>
                         <td className="px-3 py-3 text-[11px] text-gray-700 font-bold text-center align-middle">{prod.productNumber}</td>
                         <td className="px-3 py-3 text-[11px] text-gray-800 font-medium align-middle">{prod.productName}</td>
@@ -207,18 +246,18 @@ export default function FormCallan({ order, onClose, onSuccess }) {
             </div>
             
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Callan Image</label>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Callan Attachment</label>
               <div className="relative group cursor-pointer">
                 <input
                   type="file"
-                  accept="image/*"
+                  accept={ATTACHMENT_ACCEPT}
                   onChange={handleImageUpload}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 />
                 <div className="w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 text-center flex items-center justify-center gap-2 group-hover:border-indigo-500 group-hover:bg-indigo-50 transition-all">
                   <Upload size={16} className="text-gray-400 group-hover:text-indigo-600" />
                   <span className="text-xs text-gray-500 group-hover:text-indigo-600 font-medium">
-                    {callanImagePreview ? 'Change Image' : 'Upload Image'}
+                    {callanImagePreview ? 'Change File' : 'Upload File'}
                   </span>
                 </div>
               </div>
@@ -248,7 +287,7 @@ export default function FormCallan({ order, onClose, onSuccess }) {
           </button>
           <button
             onClick={handleSave}
-            disabled={items.length === 0}
+            disabled={items.filter(i => i._selected).length === 0}
             className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle size={16} /> Save Callan

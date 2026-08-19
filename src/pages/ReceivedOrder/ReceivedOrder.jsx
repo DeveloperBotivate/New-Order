@@ -3,7 +3,8 @@ import {
   Search, Filter, Eye, X, Calendar, 
   RotateCcw, ChevronDown, ChevronUp, FileText, Download, Info, Check
 } from 'lucide-react';
-import { getReceivedOrders } from '../../utils/storageManager';
+import { getReceivedOrders, getDivisions } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 import DataTable from '../../components/DataTable';
 import InfoPopover from '../../components/InfoPopover';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -13,6 +14,7 @@ export default function ReceivedOrder() {
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState('');
   const [orders, setOrders] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [expandedRows, setExpandedRows] = useState(new Set());
 
   // Filters State
@@ -29,6 +31,7 @@ export default function ReceivedOrder() {
 
   useEffect(() => {
     setOrders(getReceivedOrders());
+    setDivisions(getDivisions() || []);
   }, []);
 
   const handleClearFilters = () => {
@@ -303,7 +306,17 @@ export default function ReceivedOrder() {
                   />
                 </div>
              </div>
-             
+
+             <div className="flex-1 min-w-0 lg:min-w-[150px]">
+               <SearchableDropdown
+                 options={divisions.map(d => ({ value: d.name, label: d.name }))}
+                 value={filters.division}
+                 onChange={(val) => { setFilters({ ...filters, division: val }); setCurrentPage(1); }}
+                 placeholder="All Divisions"
+                 className="h-[32px] md:h-[38px]"
+               />
+             </div>
+
              <button
               onClick={handleClearFilters}
               className="hidden lg:flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded lg:rounded-lg w-[38px] h-[38px] hover:bg-gray-100 shadow-sm"
@@ -341,7 +354,9 @@ export default function ReceivedOrder() {
               <X size={20} />
             </button>
             <div className="overflow-auto max-h-[85vh] rounded-xl">
-              {selectedImage.startsWith('data:image/') ? (
+              {isPdfDataUrl(selectedImage) ? (
+                <iframe src={selectedImage} title="PDF Preview" className="w-full h-[80vh] rounded-xl bg-white" />
+              ) : selectedImage.startsWith('data:image/') ? (
                 <img src={selectedImage} alt="Attachment" className="w-full h-auto" />
               ) : (
                 <div className="p-10 text-center">

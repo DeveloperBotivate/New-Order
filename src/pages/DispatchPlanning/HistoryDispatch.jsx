@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Eye, X } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import { getDispatchHistory } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function HistoryDispatch({ data, filters }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -50,6 +51,7 @@ export default function HistoryDispatch({ data, filters }) {
     { label: "Order ID", className: "sticky left-[60px] bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name", 
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", 
+    "Total Qty", "Dispatch Qty", "Cancel Qty",
     "Advance Payment", "Advance Amount", 
     { label: "PO Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[80px]" }
   ];
@@ -76,6 +78,11 @@ export default function HistoryDispatch({ data, filters }) {
     // Get all dispatched items for this order
     const allDispatch = getDispatchHistory() || [];
     const orderDispatchItems = allDispatch.filter(d => d.orderId === order.orderId);
+    
+    // Aggregation Math
+    const totalQty = orderDispatchItems.reduce((sum, h) => sum + (parseFloat(h.totalQty) || parseFloat(h.qty) || 0), 0);
+    const dispatchQty = orderDispatchItems.reduce((sum, h) => sum + (parseFloat(h.dispatchQty) || parseFloat(h.qty) || 0), 0);
+    const cancelQty = orderDispatchItems.reduce((sum, h) => sum + (parseFloat(h.cancelQty) || 0), 0);
 
     return (
       <React.Fragment key={order.orderId}>
@@ -104,6 +111,11 @@ export default function HistoryDispatch({ data, filters }) {
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{order.transportingType || '-'}</td>
           <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap bg-indigo-50/50">{order.items?.length || 0}</td>
           <td className="px-3 py-3 text-center text-[11px] font-bold text-emerald-600 whitespace-nowrap">₹{order.totalPOValue?.toFixed(2) || '0'}</td>
+          
+          <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-700 whitespace-nowrap bg-gray-50">{totalQty}</td>
+          <td className="px-3 py-3 text-center text-[11px] font-bold text-emerald-600 whitespace-nowrap bg-emerald-50/30">{dispatchQty}</td>
+          <td className="px-3 py-3 text-center text-[11px] font-bold text-red-500 whitespace-nowrap bg-red-50/30">{cancelQty}</td>
+
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{order.advancePayment || 'No'}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-emerald-600 whitespace-nowrap">{order.advanceAmount ? `₹${order.advanceAmount}` : '-'}</td>
           
@@ -129,12 +141,13 @@ export default function HistoryDispatch({ data, filters }) {
                         <th className="px-4 py-3 font-bold text-center">Dispatch ID</th>
                         <th className="px-4 py-3 font-bold text-center">Product Number</th>
                         <th className="px-4 py-3 font-bold">Product Name</th>
-                        <th className="px-4 py-3 font-bold text-center">Qty</th>
+                        <th className="px-4 py-3 font-bold text-center">Total Qty</th>
+                        <th className="px-4 py-3 font-bold text-center text-emerald-600">Dispatch Qty</th>
+                        <th className="px-4 py-3 font-bold text-center text-red-500">Cancel Qty</th>
                         <th className="px-4 py-3 font-bold text-center">UOM</th>
                         <th className="px-4 py-3 font-bold text-right">Price/Rate</th>
                         <th className="px-4 py-3 font-bold text-right">GST %</th>
                         <th className="px-4 py-3 font-bold text-center">Dispatch Date</th>
-                        <th className="px-4 py-3 font-bold text-center">Dispatch Qty</th>
                         <th className="px-4 py-3 font-bold text-right">Total Value</th>
                         <th className="px-4 py-3 font-bold text-right">GST Value</th>
                         <th className="px-4 py-3 font-bold text-right text-indigo-600">Grand Total</th>
@@ -146,6 +159,7 @@ export default function HistoryDispatch({ data, filters }) {
                         const originalProduct = order.items?.find(p => `${order.orderId}-${String(order.items.indexOf(p) + 1).padStart(2, '0')}` === hist.productNumber);
                         const qty = parseFloat(hist.qty) || 0;
                         const dispatchQty = parseFloat(hist.dispatchQty) || qty; // fallback to original qty if it was old data
+                        const cancelQty = parseFloat(hist.cancelQty) || 0;
                         const rate = parseFloat(hist.priceRate) || 0;
                         const gstPerc = parseFloat(originalProduct?.gstPercent || order.globalGstPercent || '0');
                         const totalValue = rate * dispatchQty;
@@ -158,11 +172,12 @@ export default function HistoryDispatch({ data, filters }) {
                             <td className="px-4 py-3 text-[11px] text-gray-700 font-bold text-center">{hist.productNumber}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-800 font-medium">{hist.productName}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-center bg-gray-50 font-bold">{hist.totalQty || qty}</td>
+                            <td className="px-4 py-3 text-[11px] text-emerald-600 text-center font-bold bg-emerald-50/30">{dispatchQty}</td>
+                            <td className="px-4 py-3 text-[11px] text-red-500 text-center font-bold bg-red-50/30">{cancelQty}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-500 text-center"><span className="bg-gray-100 px-2 py-0.5 rounded">{hist.uom}</span></td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-right font-medium">₹{rate.toFixed(2)}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-right">{gstPerc}%</td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-center font-bold">{hist.dispatchDate}</td>
-                            <td className="px-4 py-3 text-[11px] text-emerald-600 text-center font-bold bg-emerald-50/30">{dispatchQty}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-right font-medium">₹{totalValue.toFixed(2)}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-right font-medium">₹{gstValue.toFixed(2)}</td>
                             <td className="px-4 py-3 text-[11px] text-indigo-600 text-right font-bold">₹{grandTotal.toFixed(2)}</td>
@@ -204,7 +219,11 @@ export default function HistoryDispatch({ data, filters }) {
             <button onClick={() => setViewImage(null)} className="absolute -top-4 -right-4 bg-white text-gray-600 rounded-full p-2 shadow-lg hover:bg-gray-50">
               <X size={20} />
             </button>
-            <img src={viewImage} alt="PO Document" className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="PO Document" className="w-full h-auto max-h-[85vh] object-contain rounded-lg" />
+            )}
           </div>
         </div>
       )}

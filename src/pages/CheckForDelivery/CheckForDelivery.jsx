@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Calendar, RotateCcw } from 'lucide-react';
-import { getReceivedOrders, getDeliveryHistory } from '../../utils/storageManager';
+import { getReceivedOrders, getDeliveryHistory, getCheckedProductNumbers } from '../../utils/storageManager';
 import PendingCheckforDelivery from './PendingCheckforDelivery';
 import HistoryCheckforDelivery from './HistoryCheckforDelivery';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -31,17 +31,20 @@ export default function CheckForDelivery() {
   const handleClearFilters = () =>
     setFilters({ searchQuery: '', fromDate: '', toDate: '', division: '', partyName: '' });
 
-  // Only show orders that have passed Check & Validation and have pending delivery items
+  // Only show orders with items that have passed Check & Validation (per product line)
+  // and still have pending delivery quantity
   const pendingItems = useMemo(() => {
     return orders.filter(order => {
-      if (!order.isChecked) return false;
+      const checkedProductNumbers = getCheckedProductNumbers(order);
+      if (checkedProductNumbers.length === 0) return false;
       return order.items?.some((item, idx) => {
         const productNumber = `${order.orderId}-${String(idx + 1).padStart(2, '0')}`;
+        if (!checkedProductNumbers.includes(productNumber)) return false;
         const historyForProduct = history.filter(h => h.orderId === order.orderId && h.productNumber === productNumber);
-        
+
         const hasNoStock = historyForProduct.some(h => h.stockStatus === 'No Stock');
         if (hasNoStock) return false;
-        
+
         const totalApproved = historyForProduct.reduce((sum, h) => sum + (parseFloat(h.approveQty) || 0), 0);
         const totalQty = parseFloat(item.qty) || 0;
         return totalQty - totalApproved > 0;
@@ -50,7 +53,7 @@ export default function CheckForDelivery() {
   }, [orders, history]);
   
   // History items come directly from delivery history
-  const historyItems = useMemo(() => history.reverse(), [history]);
+  const historyItems = useMemo(() => [...history].reverse(), [history]);
 
   const divisionOptions = useMemo(() =>
     Array.from(new Set(orders.map(i => i.division))).filter(Boolean).sort().map(d => ({ value: d, label: d }))

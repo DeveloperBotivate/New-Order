@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, X, FileImage } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import { getConfirmDeliveryHistory } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function HistoryDelivery({ data, filters }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -49,8 +50,8 @@ export default function HistoryDelivery({ data, filters }) {
     { label: "Order ID", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[110px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name",
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount",
-    "Invoice Number", "Invoice Date", "Invoice Amount", "Status", "Remarks",
-    { label: "Invoice Copy", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
+    "Invoice Number", "Invoice Date", "Invoice Amount", "Status", "Remarks", "Invoice Copy",
+    { label: "Delivery Attachment", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
   ];
 
   const renderCard = (order) => (
@@ -81,6 +82,7 @@ export default function HistoryDelivery({ data, filters }) {
     const status = orderConfirmItems[0]?.deliveryStatus || '-';
     const remarks = orderConfirmItems[0]?.deliveryRemarks || '-';
     const invoiceImage = orderConfirmItems[0]?.invoiceImage;
+    const deliveryImage = orderConfirmItems[0]?.deliveryImage;
 
     return (
       <React.Fragment key={order.orderId}>
@@ -122,10 +124,20 @@ export default function HistoryDelivery({ data, filters }) {
           </td>
           
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 max-w-[200px] truncate" title={remarks}>{remarks}</td>
-          
-          <td className="px-3 py-3 whitespace-nowrap sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb] transition-colors bg-white group-hover:bg-slate-50 text-center" onClick={(e) => e.stopPropagation()}>
+
+          <td className="px-3 py-3 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
             {invoiceImage ? (
               <button onClick={(e) => handleImageView(invoiceImage, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
+                <FileImage size={16} />
+              </button>
+            ) : (
+              <span className="text-gray-400 text-xs">-</span>
+            )}
+          </td>
+
+          <td className="px-3 py-3 whitespace-nowrap sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb] transition-colors bg-white group-hover:bg-slate-50 text-center" onClick={(e) => e.stopPropagation()}>
+            {deliveryImage ? (
+              <button onClick={(e) => handleImageView(deliveryImage, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
                 <FileImage size={16} />
               </button>
             ) : (
@@ -136,7 +148,7 @@ export default function HistoryDelivery({ data, filters }) {
 
         {isExpanded && (
           <tr>
-            <td colSpan="20" className="p-0 border-b border-indigo-50 bg-indigo-50/30">
+            <td colSpan="21" className="p-0 border-b border-indigo-50 bg-indigo-50/30">
               <div className="sticky left-0 w-[90vw] md:w-[80vw] lg:w-[75vw] max-w-[1200px] p-4 pl-8 md:pl-12 animate-in slide-in-from-top-2 duration-200">
                 <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
                   <table className="w-full text-left border-collapse">
@@ -217,7 +229,11 @@ export default function HistoryDelivery({ data, filters }) {
             <button onClick={() => setViewImage(null)} className="absolute top-4 right-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg p-2 transition-colors">
               <X size={20} />
             </button>
-            <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            )}
           </div>
         </div>
       )}

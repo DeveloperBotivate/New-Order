@@ -3,7 +3,7 @@ import DataTable from '../../components/DataTable';
 import { ChevronDown, ChevronUp, CheckSquare, Eye, Info } from 'lucide-react';
 import InfoPopover from '../../components/InfoPopover';
 import FormCheckforDelivery from './FormCheckforDelivery';
-import { getDeliveryHistory } from '../../utils/storageManager';
+import { getDeliveryHistory, getCheckedProductNumbers } from '../../utils/storageManager';
 
 export default function PendingCheckforDelivery({ data, filters, refresh }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -160,6 +160,7 @@ export default function PendingCheckforDelivery({ data, filters, refresh }) {
                     <tbody className="divide-y divide-gray-50">
                       {item.items?.map((prod, idx) => {
                         const productNumber = `${item.orderId}-${String(idx + 1).padStart(2, '0')}`;
+                        if (!getCheckedProductNumbers(item).includes(productNumber)) return null;
                         const basic = (parseFloat(prod.qty) || 0) * (parseFloat(prod.priceRate) || 0);
                         const gstPerc = parseFloat(prod.gstPercent || item.globalGstPercent || '0');
                         const gstValue = basic * (gstPerc / 100);

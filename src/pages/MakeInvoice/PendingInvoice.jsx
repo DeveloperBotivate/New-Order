@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, FilePenLine, X, FileImage } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import FormInvoice from './FormInvoice';
-import { getCallanHistory, getInvoiceHistory } from '../../utils/storageManager';
+import { getCallanHistory, getInvoiceHistory, getLogisticHistory } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function PendingInvoice({ data, filters, onSuccess }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -57,6 +58,7 @@ export default function PendingInvoice({ data, filters, onSuccess }) {
     { label: "Order ID", className: "sticky left-[100px] bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[110px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name",
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount",
+    "Transport Name", "Vehicle Plate Number", "Driver Full Name", "Driver Mobile Contact",
     "Callan No", "Remarks",
     { label: "Callan Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
   ];
@@ -83,6 +85,7 @@ export default function PendingInvoice({ data, filters, onSuccess }) {
     // Pending items: Present in Callan but not in Invoice
     const allCallan = getCallanHistory() || [];
     const allInvoice = getInvoiceHistory() || [];
+    const allLogistic = getLogisticHistory() || [];
     
     const orderCallans = allCallan.filter(ch => ch.orderId === order.orderId);
     
@@ -98,6 +101,13 @@ export default function PendingInvoice({ data, filters, onSuccess }) {
     const callanNo = orderCallans.length > 0 ? (orderCallans[0]?.callanNo || '-') : '-';
     const remarks = orderCallans.length > 0 ? (orderCallans[0]?.callanRemarks || '-') : '-';
     const callanImage = orderCallans.length > 0 ? orderCallans[0]?.callanImage : null;
+
+    const firstPendingId = pendingItems.length > 0 ? pendingItems[0].dispatchId : null;
+    const logisticEntry = allLogistic.find(lh => lh.dispatchId === firstPendingId) || {};
+    const transportAgency = logisticEntry.transportAgency || '-';
+    const vehicleNo = logisticEntry.vehicleNo || '-';
+    const driverName = logisticEntry.driverName || '-';
+    const driverMobile = logisticEntry.driverMobile || '-';
 
     return (
       <React.Fragment key={order.orderId}>
@@ -138,6 +148,11 @@ export default function PendingInvoice({ data, filters, onSuccess }) {
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{order.advancePayment || 'No'}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-green-600 whitespace-nowrap">₹{order.advanceAmount || '0'}</td>
           
+          <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{transportAgency}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{vehicleNo}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{driverName}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{driverMobile}</td>
+
           <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{callanNo}</td>
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 max-w-[200px] truncate" title={remarks}>{remarks}</td>
 
@@ -154,7 +169,7 @@ export default function PendingInvoice({ data, filters, onSuccess }) {
 
         {isExpanded && (
           <tr>
-            <td colSpan="18" className="p-0 border-b border-indigo-50 bg-indigo-50/30">
+            <td colSpan="22" className="p-0 border-b border-indigo-50 bg-indigo-50/30">
               <div className="sticky left-0 w-[90vw] md:w-[80vw] lg:w-[75vw] max-w-[1200px] p-4 pl-8 md:pl-12 animate-in slide-in-from-top-2 duration-200">
                 <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
                   <table className="w-full text-left border-collapse">
@@ -247,7 +262,11 @@ export default function PendingInvoice({ data, filters, onSuccess }) {
             <button onClick={() => setViewImage(null)} className="absolute top-4 right-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg p-2 transition-colors">
               <X size={20} />
             </button>
-            <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            )}
           </div>
         </div>
       )}

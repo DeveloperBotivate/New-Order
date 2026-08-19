@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import DataTable from '../../components/DataTable';
-import { Truck } from 'lucide-react';
+import { Truck, FileImage, X } from 'lucide-react';
 import FormFreightPayment from './FormFreightPayment';
-import { savePaymentTransaction } from '../../utils/storageManager';
+import { savePaymentTransaction, updateLogisticBiltyDetails } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
 export default function PendingFreight({ data, filters, onSuccess }) {
@@ -10,14 +11,22 @@ export default function PendingFreight({ data, filters, onSuccess }) {
   const [itemsPerPage, setItemsPerPage] = useState(15);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [viewImage, setViewImage] = useState(null);
+
+  const handleImageView = (imgUrl, e) => {
+    e.stopPropagation();
+    if (imgUrl) setViewImage(imgUrl);
+  };
 
   const filteredData = data.filter(item => {
+    if (filters.division && item.division !== filters.division) return false;
+
     if (filters.fromDate || filters.toDate) {
       const date = item.poDate;
       if (filters.fromDate && date < filters.fromDate) return false;
       if (filters.toDate && date > filters.toDate) return false;
     }
-    
+
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
       return (
@@ -36,8 +45,8 @@ export default function PendingFreight({ data, filters, onSuccess }) {
   const tableHeaders = [
     { label: "Action", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     { label: "Order ID", className: "sticky left-[120px] bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
-    "PO Number", "Party Name", "Transporter Name", "Lorry Receipt", 
-    "Total Freight Expected", "Freight Paid", 
+    "PO Number", "Party Name", "Transporter Name", "Bilty Number", "Bilty Copy",
+    "Total Freight Expected", "Freight Paid",
     { label: "Pending Freight", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[140px]" }
   ];
 
@@ -50,9 +59,20 @@ export default function PendingFreight({ data, filters, onSuccess }) {
       paymentMode: formData.paymentMode,
       referenceNo: formData.referenceNo,
       remarks: formData.remarks,
+      receiptImage: formData.receiptImage,
     };
-    
+
     savePaymentTransaction([paymentRecord]);
+
+    // Bilty Number/Copy were missing at the Vehicle Logistic step — save whatever
+    // was captured here back onto the logistic record so it shows up everywhere.
+    if (formData.lrNumber || formData.lrCopy) {
+      updateLogisticBiltyDetails(selectedRecord.orderId, {
+        lrNumber: formData.lrNumber,
+        lrCopy: formData.lrCopy
+      });
+    }
+
     toast.success('Freight Payment recorded successfully!');
     setShowForm(false);
     setSelectedRecord(null);
@@ -111,6 +131,15 @@ export default function PendingFreight({ data, filters, onSuccess }) {
       <td className="px-4 py-3 text-xs text-center text-gray-800 font-medium whitespace-nowrap">{record.partyName}</td>
       <td className="px-4 py-3 text-xs text-center font-bold text-gray-700 whitespace-nowrap">{record.transportAgency}</td>
       <td className="px-4 py-3 text-xs text-center font-bold text-indigo-600 whitespace-nowrap">{record.lrNumber || '-'}</td>
+      <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+        {record.lrCopy ? (
+          <button onClick={(e) => handleImageView(record.lrCopy, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
+            <FileImage size={16} />
+          </button>
+        ) : (
+          <span className="text-gray-400 text-xs">-</span>
+        )}
+      </td>
       <td className="px-4 py-3 text-xs text-center font-bold text-gray-800 whitespace-nowrap bg-gray-50">₹{record.totalFreightExpected?.toFixed(2)}</td>
       <td className="px-4 py-3 text-xs text-center font-bold text-emerald-600 whitespace-nowrap bg-emerald-50/50">₹{(record.totalFreightPaid || 0).toFixed(2)}</td>
       <td className="px-4 py-3 text-xs text-center font-bold text-amber-600 whitespace-nowrap bg-amber-50/50 sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb]">₹{record.pendingAmount?.toFixed(2)}</td>
@@ -134,7 +163,7 @@ export default function PendingFreight({ data, filters, onSuccess }) {
       />
 
       {showForm && selectedRecord && (
-        <FormFreightPayment 
+        <FormFreightPayment
           agencyData={selectedRecord}
           onClose={() => {
             setShowForm(false);
@@ -142,6 +171,22 @@ export default function PendingFreight({ data, filters, onSuccess }) {
           }}
           onSubmit={handlePaymentSubmit}
         />
+      )}
+
+      {/* Bilty Copy Modal */}
+      {viewImage && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={() => setViewImage(null)}>
+          <div className="bg-white rounded-xl p-2 max-w-4xl max-h-[90vh] overflow-auto relative shadow-2xl" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setViewImage(null)} className="absolute top-4 right-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg p-2 transition-colors">
+              <X size={20} />
+            </button>
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="Bilty Copy" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            )}
+          </div>
+        </div>
       )}
     </>
   );

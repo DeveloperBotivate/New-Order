@@ -51,7 +51,10 @@ export default function DispatchPlanning() {
         const dispatchedQty = dispatchHistory
           .filter(dh => dh.deliveryApproverId === delivery.deliveryApproverId)
           .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0), 0);
-        return (availableQty - dispatchedQty) > 0;
+        const canceledQty = dispatchHistory
+          .filter(dh => dh.deliveryApproverId === delivery.deliveryApproverId)
+          .reduce((sum, dh) => sum + (parseFloat(dh.cancelQty) || 0), 0);
+        return (availableQty - dispatchedQty - canceledQty) > 0;
       });
     }).reverse();
   }, [orders, deliveryHistory, dispatchHistory]);

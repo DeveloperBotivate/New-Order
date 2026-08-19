@@ -81,6 +81,25 @@ export const isDateInRange = (date, fromDate, toDate) => {
   return checkDate >= startDate && checkDate <= endDate;
 };
 
+// Shared attachment rules — every upload widget in the app should accept
+// both images and PDFs, up to this size, so the limit lives in one place.
+export const MAX_ATTACHMENT_SIZE_MB = 10;
+export const ATTACHMENT_ACCEPT = 'image/*,application/pdf';
+
+// Validates a picked file against the shared attachment rules. Returns
+// an error string to show the user, or null when the file is acceptable.
+export const validateAttachmentFile = (file, maxSizeMB = MAX_ATTACHMENT_SIZE_MB) => {
+  if (!file) return null;
+  if (file.size > maxSizeMB * 1024 * 1024) {
+    return `File must be less than ${maxSizeMB}MB`;
+  }
+  return null;
+};
+
+// True when a stored data URL is a PDF rather than an image — lets preview/
+// viewer UI branch between <img> and a PDF-friendly renderer.
+export const isPdfDataUrl = (value) => typeof value === 'string' && value.startsWith('data:application/pdf');
+
 // Base64 image conversion
 export const fileToBase64 = (file) => {
   return new Promise((resolve, reject) => {

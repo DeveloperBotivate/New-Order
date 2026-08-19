@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Upload, Save, FileImage, Trash2, CheckCircle, FileText } from 'lucide-react';
-import { saveInvoiceTransaction, getCallanHistory, getInvoiceHistory } from '../../utils/storageManager';
-import { compressImageFile } from '../../utils/helpers';
+import { saveInvoiceTransaction, getCallanHistory, getInvoiceHistory, getLogisticHistory, getTransporterAgencies } from '../../utils/storageManager';
+import { compressImageFile, validateAttachmentFile, isPdfDataUrl, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
 // Computes the same Grand Total shown in the products table (Price * Dispatch Qty, plus GST)
@@ -23,29 +23,53 @@ export default function FormInvoice({ order, onClose, onSuccess }) {
   const orderCallans = allCallan.filter(ch => ch.orderId === order.orderId);
 
   // Matched by dispatchId — each dispatch transaction, including partial ones, is independent
-  const pendingItems = orderCallans.filter(callanItem => {
+  const initialPendingItems = orderCallans.filter(callanItem => {
     return !allInvoice.some(ih => ih.dispatchId === callanItem.dispatchId);
-  });
+  }).map(item => ({ ...item, _selected: true }));
+
+  const [items, setItems] = useState(initialPendingItems);
 
   // Pre-fill Invoice Amount with the sum of the Grand Totals shown in the products table
-  const suggestedInvoiceAmount = pendingItems
+  const suggestedInvoiceAmount = items
+    .filter(i => i._selected)
     .reduce((sum, item) => sum + calculateGrandTotal(order, item), 0)
     .toFixed(2);
 
+  // Pre-fill transport/vehicle/driver details from this order's Vehicle Logistic entry
+  const allLogistic = getLogisticHistory() || [];
+  const orderLogisticItems = allLogistic.filter(lh => lh.orderId === order.orderId);
+  const initialLogistic = orderLogisticItems[orderLogisticItems.length - 1] || {};
+
+  const [agencies] = useState(() => getTransporterAgencies() || []);
+
   const [formData, setFormData] = useState({
+    transportAgency: initialLogistic.transportAgency || '',
+    vehicleNo: initialLogistic.vehicleNo || '',
+    driverName: initialLogistic.driverName || '',
+    driverMobile: initialLogistic.driverMobile || '',
     invoiceNumber: '',
     invoiceDate: new Date().toISOString().split('T')[0],
     invoiceAmount: suggestedInvoiceAmount,
     invoiceRemarks: ''
   });
 
+  const handleToggleItem = (dispatchId) => {
+    setItems(prev => {
+      const next = prev.map(item => item.dispatchId === dispatchId ? { ...item, _selected: !item._selected } : item);
+      const newTotal = next.filter(i => i._selected).reduce((sum, item) => sum + calculateGrandTotal(order, item), 0).toFixed(2);
+      setFormData(f => ({ ...f, invoiceAmount: newTotal }));
+      return next;
+    });
+  };
+
   const [imagePreview, setImagePreview] = useState(null);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error("Image must be less than 8MB");
+    const sizeError = validateAttachmentFile(file);
+    if (sizeError) {
+      toast.error(sizeError);
       return;
     }
     try {
@@ -69,8 +93,18 @@ export default function FormInvoice({ order, onClose, onSuccess }) {
       return;
     }
 
-    const transactionData = pendingItems.map(item => ({
+    const selectedItems = items.filter(i => i._selected);
+    if (selectedItems.length === 0) {
+      toast.error('Please select at least one product to invoice');
+      return;
+    }
+
+    const transactionData = selectedItems.map(item => ({
       ...item,
+      transportAgency: formData.transportAgency,
+      vehicleNo: formData.vehicleNo,
+      driverName: formData.driverName,
+      driverMobile: formData.driverMobile,
       invoiceNumber: formData.invoiceNumber,
       invoiceDate: formData.invoiceDate,
       invoiceAmount: formData.invoiceAmount,
@@ -164,6 +198,7 @@ export default function FormInvoice({ order, onClose, onSuccess }) {
                 <table className="w-full text-left border-collapse min-w-[1200px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Action</th>
                       <th className="px-3 py-3 font-bold text-center whitespace-nowrap">DispatchID</th>
                       <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Product Number</th>
                       <th className="px-3 py-3 font-bold whitespace-nowrap">Product Name</th>
@@ -179,7 +214,7 @@ export default function FormInvoice({ order, onClose, onSuccess }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {pendingItems.map((item, idx) => {
+                    {items.map((item, idx) => {
                       const originalProduct = order.items?.find(p => `${order.orderId}-${String(order.items.indexOf(p) + 1).padStart(2, '0')}` === item.productNumber);
                       const qty = item.totalQty || item.approveQty || item.qty || 0;
                       const dispatchQty = parseFloat(item.dispatchQty) || 0;
@@ -189,7 +224,15 @@ export default function FormInvoice({ order, onClose, onSuccess }) {
                       const gstValue = totalValue * (gstPerc / 100);
                       const grandTotal = totalValue + gstValue;
                       return (
-                        <tr key={idx} className="hover:bg-gray-50/50">
+                        <tr key={idx} className={`hover:bg-gray-50/50 ${!item._selected ? 'opacity-50' : ''}`}>
+                          <td className="px-3 py-3 text-center">
+                            <input 
+                              type="checkbox" 
+                              checked={item._selected} 
+                              onChange={() => handleToggleItem(item.dispatchId)}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                          </td>
                           <td className="px-3 py-3 text-xs font-bold text-indigo-600 text-center">{item.dispatchId || '-'}</td>
                           <td className="px-3 py-3 text-xs font-medium text-gray-700 text-center">{item.productNumber}</td>
                           <td className="px-3 py-3 text-xs text-gray-800">{item.productName}</td>
@@ -215,6 +258,49 @@ export default function FormInvoice({ order, onClose, onSuccess }) {
               <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Invoice Details</h3>
               <div className="space-y-3 bg-white p-4 rounded-xl border border-gray-200">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Transport Name</label>
+                    <select
+                      value={formData.transportAgency}
+                      onChange={(e) => setFormData({...formData, transportAgency: e.target.value})}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="">Select Transport</option>
+                      {agencies.map(agency => (
+                        <option key={agency.id} value={agency.name}>{agency.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Vehicle Plate Number</label>
+                    <input
+                      type="text"
+                      value={formData.vehicleNo}
+                      onChange={(e) => setFormData({...formData, vehicleNo: e.target.value})}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Vehicle No"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Driver Full Name</label>
+                    <input
+                      type="text"
+                      value={formData.driverName}
+                      onChange={(e) => setFormData({...formData, driverName: e.target.value})}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Driver Name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Driver Mobile Contact</label>
+                    <input
+                      type="text"
+                      value={formData.driverMobile}
+                      onChange={(e) => setFormData({...formData, driverMobile: e.target.value})}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Driver Mobile"
+                    />
+                  </div>
                   <div>
                     <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Invoice Number <span className="text-red-500">*</span></label>
                     <input
@@ -267,17 +353,24 @@ export default function FormInvoice({ order, onClose, onSuccess }) {
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer group relative">
                       <input
                         type="file"
-                        accept="image/*"
+                        accept={ATTACHMENT_ACCEPT}
                         onChange={handleImageUpload}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       />
                       <Upload className="text-gray-400 group-hover:text-indigo-500 mb-2" size={24} />
                       <p className="text-sm font-medium text-gray-600">Click to upload or drag and drop</p>
-                      <p className="text-xs text-gray-400 mt-1">SVG, PNG, JPG or GIF (max 5MB)</p>
+                      <p className="text-xs text-gray-400 mt-1">Image or PDF (max {MAX_ATTACHMENT_SIZE_MB}MB)</p>
                     </div>
                   ) : (
                     <div className="relative border rounded-lg overflow-hidden bg-gray-50 inline-block">
-                      <img src={imagePreview} alt="Preview" className="h-32 w-auto object-contain" />
+                      {isPdfDataUrl(imagePreview) ? (
+                        <div className="h-32 w-40 flex flex-col items-center justify-center gap-1 bg-red-50">
+                          <FileText size={28} className="text-red-500" />
+                          <span className="text-[10px] font-medium text-gray-600">PDF Attached</span>
+                        </div>
+                      ) : (
+                        <img src={imagePreview} alt="Preview" className="h-32 w-auto object-contain" />
+                      )}
                       <button
                         type="button"
                         onClick={removeImage}

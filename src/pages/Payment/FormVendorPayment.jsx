@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { X, CheckCircle, Upload, CreditCard, Calendar } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { compressImageFile } from '../../utils/helpers';
+import toast from 'react-hot-toast';
+import { compressImageFile, validateAttachmentFile, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 
 export default function FormVendorPayment({ order, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
     amountPaid: order.pendingAmount || '',
     paymentDate: new Date().toISOString().split('T')[0],
+    billDate: '',
     paymentMode: 'Bank Transfer',
     referenceNo: '',
     remarks: '',
@@ -24,6 +26,7 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
       newErrors.amountPaid = 'Amount cannot exceed the pending balance';
     }
     if (!formData.paymentDate) newErrors.paymentDate = 'Payment date is required';
+    if (!formData.billDate) newErrors.billDate = 'Bill date is required';
     if (!formData.paymentMode) newErrors.paymentMode = 'Payment mode is required';
     if (!formData.referenceNo) newErrors.referenceNo = 'Reference No / UTR is required';
     
@@ -77,7 +80,7 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Total PO Value</p>
-                <p className="text-sm font-bold text-emerald-600">₹{order.totalPOValue?.toFixed(2)}</p>
+                <p className="text-sm font-bold text-emerald-600">₹{order.effectivePOValue?.toFixed(2)}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Total Paid</p>
@@ -86,6 +89,14 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
               <div>
                 <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-400 mb-1">Pending Balance</p>
                 <p className="text-sm font-bold text-red-600 bg-red-50 inline-block px-2 py-0.5 rounded">₹{order.pendingAmount.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Invoice Number</p>
+                <p className="text-sm font-semibold text-gray-900">{order.invoiceNumber || '-'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Invoice Date</p>
+                <p className="text-sm font-semibold text-gray-900">{order.invoiceDate || '-'}</p>
               </div>
             </div>
           </div>
@@ -128,6 +139,19 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
                   className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium ${errors.paymentDate ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50/50'}`}
                 />
                 {errors.paymentDate && <p className="text-[10px] text-red-500 mt-1">{errors.paymentDate}</p>}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Bill Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={formData.billDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, billDate: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium ${errors.billDate ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50/50'}`}
+                />
+                {errors.billDate && <p className="text-[10px] text-red-500 mt-1">{errors.billDate}</p>}
               </div>
 
               <div>
@@ -181,13 +205,18 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
                   <label className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors shadow-sm">
                     <Upload size={16} className="text-gray-500" />
                     <span className="text-sm font-medium text-gray-700">Upload Receipt</span>
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*,.pdf"
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept={ATTACHMENT_ACCEPT}
                       onChange={async (e) => {
                         const file = e.target.files[0];
                         if (!file) return;
+                        const sizeError = validateAttachmentFile(file);
+                        if (sizeError) {
+                          toast.error(sizeError);
+                          return;
+                        }
                         const compressed = await compressImageFile(file);
                         setFormData(prev => ({ ...prev, receiptImage: compressed }));
                       }}
@@ -198,6 +227,7 @@ export default function FormVendorPayment({ order, onClose, onSubmit }) {
                       <CheckCircle size={14} /> Uploaded
                     </span>
                   )}
+                  <span className="text-[10px] text-gray-400">Image or PDF, max {MAX_ATTACHMENT_SIZE_MB}MB</span>
                 </div>
               </div>
             </div>

@@ -130,7 +130,7 @@ export default function HistoryProduction({ data, filters }) {
                         <th className="px-4 py-3 font-bold text-right">GST Value</th>
                         <th className="px-4 py-3 font-bold text-right text-emerald-600">Grand Total</th>
                         <th className="px-4 py-3 font-bold text-center">Status</th>
-                        <th className="px-4 py-3 font-bold text-center">Approve Qty</th>
+                        <th className="px-4 py-3 font-bold text-center">Available For Dispatch</th>
                         <th className="px-4 py-3 font-bold text-center">Batch No.</th>
                         <th className="px-4 py-3 font-bold">Remarks</th>
                       </tr>

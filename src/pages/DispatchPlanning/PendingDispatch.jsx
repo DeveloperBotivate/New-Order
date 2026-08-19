@@ -54,7 +54,7 @@ export default function PendingDispatch({ data, filters, refresh }) {
     { label: "Order ID", className: "sticky left-[80px] bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name", 
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", 
-    "Total Qty", "Dispatch Qty", "Pending Qty",
+    "Total Qty", "Dispatch Qty", "Cancel Qty", "Pending Qty",
     "Advance Payment", "Advance Amount", "Remarks",
     { label: "PO Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[80px]" }
   ];
@@ -92,7 +92,10 @@ export default function PendingDispatch({ data, filters, refresh }) {
         const dispatchedQty = allDispatch
           .filter(dh => dh.deliveryApproverId === h.deliveryApproverId)
           .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0), 0);
-        return { ...h, _availableQty: availableQty, _dispatchedQty: dispatchedQty, _pendingQty: availableQty - dispatchedQty };
+        const canceledQty = allDispatch
+          .filter(dh => dh.deliveryApproverId === h.deliveryApproverId)
+          .reduce((sum, dh) => sum + (parseFloat(dh.cancelQty) || 0), 0);
+        return { ...h, _availableQty: availableQty, _dispatchedQty: dispatchedQty, cancelQty: canceledQty, _pendingQty: availableQty - dispatchedQty - canceledQty };
       });
 
     // A partial dispatch must NOT remove a product line from the pending list —
@@ -104,7 +107,8 @@ export default function PendingDispatch({ data, filters, refresh }) {
     // aren't "pending dispatch" yet, they're pending an earlier stage).
     const totalQty = innerItemsAll.reduce((sum, h) => sum + h._availableQty, 0);
     const dispatchQty = innerItemsAll.reduce((sum, h) => sum + h._dispatchedQty, 0);
-    const pendingQty = totalQty - dispatchQty;
+    const cancelQty = innerItemsAll.reduce((sum, h) => sum + (h.cancelQty || 0), 0);
+    const pendingQty = totalQty - dispatchQty - cancelQty;
 
     return (
       <React.Fragment key={order.orderId}>
@@ -144,6 +148,7 @@ export default function PendingDispatch({ data, filters, refresh }) {
           
           <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-700 whitespace-nowrap bg-gray-50">{totalQty}</td>
           <td className="px-3 py-3 text-center text-[11px] font-bold text-emerald-600 whitespace-nowrap bg-emerald-50/30">{dispatchQty}</td>
+          <td className="px-3 py-3 text-center text-[11px] font-bold text-red-500 whitespace-nowrap bg-red-50/30">{cancelQty}</td>
           <td className="px-3 py-3 text-center text-[11px] font-bold text-orange-600 whitespace-nowrap bg-orange-50/30">{pendingQty}</td>
 
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{order.advancePayment || 'No'}</td>
@@ -179,7 +184,10 @@ export default function PendingDispatch({ data, filters, refresh }) {
                       <tr className="bg-indigo-50/50 border-b border-indigo-100 text-[10px] text-indigo-800 uppercase tracking-wider">
                         <th className="px-4 py-3 font-bold text-center">Product Number</th>
                         <th className="px-4 py-3 font-bold">Product Name</th>
-                        <th className="px-4 py-3 font-bold text-center">Qty</th>
+                        <th className="px-4 py-3 font-bold text-center">Total Qty</th>
+                        <th className="px-4 py-3 font-bold text-center text-emerald-600">Total Dispatch Qty</th>
+                        <th className="px-4 py-3 font-bold text-center text-orange-600">Total Pending Qty</th>
+                        <th className="px-4 py-3 font-bold text-center text-red-500">Total Cancel Qty</th>
                         <th className="px-4 py-3 font-bold text-center">UOM</th>
                         <th className="px-4 py-3 font-bold text-right">Price/Rate</th>
                         <th className="px-4 py-3 font-bold text-right">Total Price</th>
@@ -191,9 +199,14 @@ export default function PendingDispatch({ data, filters, refresh }) {
                     <tbody className="divide-y divide-gray-50">
                       {innerItems.map((hist, idx) => {
                         const originalProduct = order.items?.find(p => `${order.orderId}-${String(order.items.indexOf(p) + 1).padStart(2, '0')}` === hist.productNumber);
-                        const qty = hist._pendingQty; // remaining, not the original stocked-in qty — a partial dispatch shrinks this
+                        
+                        const totalQty = hist._availableQty || 0;
+                        const dispatchQty = hist._dispatchedQty || 0;
+                        const pendingQty = hist._pendingQty || 0;
+                        const cancelQty = hist.cancelQty || 0;
+
                         const rate = parseFloat(hist.priceRate) || 0;
-                        const basic = qty * rate;
+                        const basic = pendingQty * rate;
                         const gstPerc = parseFloat(originalProduct?.gstPercent || order.globalGstPercent || '0');
                         const gstValue = basic * (gstPerc / 100);
 
@@ -201,7 +214,10 @@ export default function PendingDispatch({ data, filters, refresh }) {
                           <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-4 py-3 text-[11px] text-indigo-600 font-bold text-center">{hist.productNumber}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-800 font-medium">{hist.productName}</td>
-                            <td className="px-4 py-3 text-[11px] text-gray-700 text-center bg-gray-50 font-bold">{qty}</td>
+                            <td className="px-4 py-3 text-[11px] text-gray-700 text-center bg-gray-50 font-bold">{totalQty}</td>
+                            <td className="px-4 py-3 text-[11px] text-emerald-600 text-center bg-emerald-50/30 font-bold">{dispatchQty}</td>
+                            <td className="px-4 py-3 text-[11px] text-orange-600 text-center bg-orange-50/30 font-bold">{pendingQty}</td>
+                            <td className="px-4 py-3 text-[11px] text-red-500 text-center bg-red-50/30 font-bold">{cancelQty}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-500 text-center"><span className="bg-gray-100 px-2 py-0.5 rounded">{hist.uom}</span></td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-right font-medium">₹{rate.toFixed(2)}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-right font-medium">₹{basic.toFixed(2)}</td>

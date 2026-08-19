@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, CheckCircle, ShieldCheck } from 'lucide-react';
+import { X, Save, CheckCircle, ShieldCheck, Upload, Trash2, FileText } from 'lucide-react';
 import { saveConfirmDeliveryTransaction, getInvoiceHistory, getConfirmDeliveryHistory } from '../../utils/storageManager';
+import { compressImageFile, validateAttachmentFile, isPdfDataUrl, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
 export default function FormDelivery({ order, onClose, onSuccess }) {
@@ -10,16 +11,35 @@ export default function FormDelivery({ order, onClose, onSuccess }) {
     remarks: ''
   });
 
+  const [imagePreview, setImagePreview] = useState(null);
+
   // Get pending items for this order
   const allInvoice = getInvoiceHistory() || [];
   const allConfirm = getConfirmDeliveryHistory() || [];
   const orderInvoices = allInvoice.filter(ih => ih.orderId === order.orderId);
 
   // Matched by dispatchId — each dispatch transaction, including partial ones, is independent
-  const pendingItems = orderInvoices.filter(invoiceItem => {
+  const initialPendingItems = orderInvoices.filter(invoiceItem => {
     const confirmRecord = allConfirm.find(ch => ch.dispatchId === invoiceItem.dispatchId);
     return !confirmRecord || confirmRecord.deliveryStatus !== 'Delivered';
-  });
+  }).map(item => ({ ...item, _selected: false }));
+
+  const [pendingItems, setPendingItems] = useState(initialPendingItems);
+
+  const handleItemChange = (index, field, value) => {
+    const newItems = [...pendingItems];
+    newItems[index][field] = value;
+    setPendingItems(newItems);
+  };
+
+  const handleSelectAll = (checked) => {
+    const newItems = pendingItems.map(item => ({ ...item, _selected: checked }));
+    setPendingItems(newItems);
+  };
+
+  const allSelected = pendingItems.length > 0 && pendingItems.every(i => i._selected);
+
+  const latestInvoice = orderInvoices[orderInvoices.length - 1] || {};
 
   // Prefill if there's an existing 'In Transit' record
   useEffect(() => {
@@ -30,9 +50,32 @@ export default function FormDelivery({ order, onClose, onSuccess }) {
           status: existing.deliveryStatus || '',
           remarks: existing.deliveryRemarks || ''
         });
+        setImagePreview(existing.deliveryImage || null);
       }
     }
   }, []);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const sizeError = validateAttachmentFile(file);
+    if (sizeError) {
+      toast.error(sizeError);
+      return;
+    }
+    try {
+      // Downscale before storing — localStorage's total quota is only ~5-10MB,
+      // so a raw phone photo can blow the whole app's quota by itself.
+      const compressed = await compressImageFile(file);
+      setImagePreview(compressed);
+    } catch {
+      toast.error('Error reading file');
+    }
+  };
+
+  const removeImage = () => {
+    setImagePreview(null);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -41,10 +84,17 @@ export default function FormDelivery({ order, onClose, onSuccess }) {
       return;
     }
 
-    const transactionData = pendingItems.map(item => ({
+    const selectedItems = pendingItems.filter(i => i._selected);
+    if (selectedItems.length === 0) {
+      toast.error('Please select at least one item to update');
+      return;
+    }
+
+    const transactionData = selectedItems.map(item => ({
       ...item,
       deliveryStatus: formData.status,
-      deliveryRemarks: formData.remarks
+      deliveryRemarks: formData.remarks,
+      deliveryImage: formData.status === 'Delivered' ? imagePreview : null
     }));
 
     saveConfirmDeliveryTransaction(transactionData);
@@ -123,6 +173,22 @@ export default function FormDelivery({ order, onClose, onSuccess }) {
                   <p className="text-[10px] text-gray-500 font-medium">Transporting Type</p>
                   <p className="text-sm font-bold text-gray-900">{order.transportingType || '-'}</p>
                 </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-medium">Transporter Name</p>
+                  <p className="text-sm font-bold text-gray-900">{latestInvoice.transportAgency || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-medium">Vehicle Plate Number</p>
+                  <p className="text-sm font-bold text-gray-900">{latestInvoice.vehicleNo || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-medium">Driver Full Name</p>
+                  <p className="text-sm font-bold text-gray-900">{latestInvoice.driverName || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-medium">Driver Contact Number</p>
+                  <p className="text-sm font-bold text-gray-900">{latestInvoice.driverMobile || '-'}</p>
+                </div>
               </div>
             </div>
 
@@ -155,6 +221,44 @@ export default function FormDelivery({ order, onClose, onSuccess }) {
                     />
                   </div>
                 </div>
+
+                {/* Attachment Upload — only when marking as Delivered */}
+                {formData.status === 'Delivered' && (
+                  <div className="mt-4">
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Delivery Attachment <span className="text-gray-400 font-normal normal-case">(Optional)</span></label>
+                    {!imagePreview ? (
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer group relative">
+                        <input
+                          type="file"
+                          accept={ATTACHMENT_ACCEPT}
+                          onChange={handleImageUpload}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <Upload className="text-gray-400 group-hover:text-indigo-500 mb-2" size={24} />
+                        <p className="text-sm font-medium text-gray-600">Click to upload or drag and drop</p>
+                        <p className="text-xs text-gray-400 mt-1">Image or PDF (max {MAX_ATTACHMENT_SIZE_MB}MB)</p>
+                      </div>
+                    ) : (
+                      <div className="relative border rounded-lg overflow-hidden bg-gray-50 inline-block">
+                        {isPdfDataUrl(imagePreview) ? (
+                          <div className="h-32 w-40 flex flex-col items-center justify-center gap-1 bg-red-50">
+                            <FileText size={28} className="text-red-500" />
+                            <span className="text-[10px] font-medium text-gray-600">PDF Attached</span>
+                          </div>
+                        ) : (
+                          <img src={imagePreview} alt="Preview" className="h-32 w-auto object-contain" />
+                        )}
+                        <button
+                          type="button"
+                          onClick={removeImage}
+                          className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-lg hover:bg-red-600 transition-colors shadow-sm"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -165,6 +269,14 @@ export default function FormDelivery({ order, onClose, onSuccess }) {
                 <table className="w-full text-left border-collapse min-w-[1200px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-3 font-bold w-[5%] whitespace-nowrap text-center">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                          checked={allSelected}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                      </th>
                       <th className="px-3 py-3 font-bold text-center whitespace-nowrap">DispatchID</th>
                       <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Product Number</th>
                       <th className="px-3 py-3 font-bold whitespace-nowrap">Product Name</th>
@@ -190,7 +302,15 @@ export default function FormDelivery({ order, onClose, onSuccess }) {
                       const gstValue = totalValue * (gstPerc / 100);
                       const grandTotal = totalValue + gstValue;
                       return (
-                        <tr key={idx} className="hover:bg-gray-50/50">
+                        <tr key={idx} className={`hover:bg-gray-50/50 ${item._selected ? 'bg-indigo-50/10' : ''}`}>
+                          <td className="px-3 py-3 text-center align-middle">
+                            <input 
+                              type="checkbox"
+                              checked={item._selected}
+                              onChange={(e) => handleItemChange(idx, '_selected', e.target.checked)}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                            />
+                          </td>
                           <td className="px-3 py-3 text-xs font-bold text-indigo-600 text-center">{item.dispatchId || '-'}</td>
                           <td className="px-3 py-3 text-xs font-medium text-gray-700 text-center">{item.productNumber}</td>
                           <td className="px-3 py-3 text-xs text-gray-800">{item.productName}</td>
@@ -226,7 +346,8 @@ export default function FormDelivery({ order, onClose, onSuccess }) {
           <button
             type="submit"
             form="confirmDeliveryForm"
-            className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm"
+            disabled={pendingItems.filter(i => i._selected).length === 0}
+            className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle size={16} /> Update Status
           </button>

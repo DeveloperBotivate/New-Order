@@ -14,13 +14,19 @@ export default function FormProduction({ order, onClose, onSuccess }) {
       return {
         ...hist,
         // Reset these for the production action
-        stockStatus: '', // will be changed to 'In Stock' ideally
-        approveQty: '',
+        stockStatus: 'In Stock', // Default to In Stock
+        approveQty: hist.qty || '', // Default to full qty
         batchNo: '',
-        remarks: ''
+        remarks: '',
+        _selected: true
       };
     });
   });
+
+  const handleSelectAll = (checked) => {
+    const newItems = items.map(item => ({ ...item, _selected: checked }));
+    setItems(newItems);
+  };
 
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
@@ -39,21 +45,26 @@ export default function FormProduction({ order, onClose, onSuccess }) {
   };
 
   const handleSave = () => {
+    const selectedItems = items.filter(i => i._selected !== false);
+    if (selectedItems.length === 0) {
+      return toast.error('Please select at least one item to produce');
+    }
+
     // Validate
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    for (let i = 0; i < selectedItems.length; i++) {
+      const item = selectedItems[i];
       if (!item.stockStatus) {
         return toast.error(`Please select Stock Status for ${item.productName}`);
       }
       if (item.stockStatus === 'In Stock') {
         if (!item.approveQty || parseFloat(item.approveQty) <= 0) {
-          return toast.error(`Please enter valid Approve Qty for ${item.productName}`);
+          return toast.error(`Please enter valid Available For Dispatch for ${item.productName}`);
         }
       }
     }
 
     // Attach produced flag
-    const updatedItems = items.map(item => ({
+    const updatedItems = selectedItems.map(item => ({
       ...item,
       produced: item.stockStatus === 'In Stock' // Mark as produced if they successfully produced it
     }));
@@ -139,6 +150,16 @@ export default function FormProduction({ order, onClose, onSuccess }) {
               <table className="w-full text-left border-collapse min-w-[1000px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500 uppercase tracking-wider">
+                    {items.length > 1 && (
+                      <th className="px-3 py-3 font-bold w-[5%] whitespace-nowrap text-center">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                          checked={items.length > 0 && items.every(i => i._selected)}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                      </th>
+                    )}
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Product Number</th>
                     <th className="px-3 py-3 font-bold whitespace-nowrap">Product Name</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Qty</th>
@@ -149,7 +170,7 @@ export default function FormProduction({ order, onClose, onSuccess }) {
                     <th className="px-3 py-3 font-bold text-right whitespace-nowrap">GST Value</th>
                     <th className="px-3 py-3 font-bold text-right text-indigo-600 whitespace-nowrap">Grand Total</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Stock Status</th>
-                    <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Approve Qty</th>
+                    <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Available For Dispatch</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Batch No.</th>
                     <th className="px-3 py-3 font-bold whitespace-nowrap">Remarks</th>
                   </tr>
@@ -163,7 +184,17 @@ export default function FormProduction({ order, onClose, onSuccess }) {
                     const grandTotal = basic + gstValue;
 
                     return (
-                      <tr key={idx} className="hover:bg-gray-50/50">
+                      <tr key={idx} className={`hover:bg-gray-50/50 ${items.length > 1 && !prod._selected ? 'opacity-50 grayscale bg-gray-50/30' : ''}`}>
+                        {items.length > 1 && (
+                          <td className="px-3 py-3 text-center align-top">
+                            <input 
+                              type="checkbox"
+                              checked={prod._selected !== false}
+                              onChange={(e) => handleItemChange(idx, '_selected', e.target.checked)}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5 mt-1"
+                            />
+                          </td>
+                        )}
                         <td className="px-3 py-3 text-xs text-indigo-600 font-bold align-top text-center">{prod.productNumber}</td>
                         <td className="px-3 py-3 text-xs text-gray-800 font-medium align-top">{prod.productName}</td>
                         <td className="px-3 py-3 text-xs text-gray-700 text-center align-top font-bold bg-gray-50">{prod.qty}</td>
@@ -177,13 +208,13 @@ export default function FormProduction({ order, onClose, onSuccess }) {
                         {/* Input fields */}
                         <td className="px-3 py-2 align-top">
                           <select
-                            className="w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:border-indigo-500 bg-white"
+                            disabled={!prod._selected}
+                            className={`w-full text-xs border rounded p-1.5 focus:outline-none focus:border-indigo-500 ${!prod._selected ? 'border-transparent bg-transparent text-gray-400' : 'border-gray-300 bg-white'}`}
                             value={prod.stockStatus}
                             onChange={(e) => handleItemChange(idx, 'stockStatus', e.target.value)}
                           >
                             <option value="">Select</option>
                             <option value="In Stock">In Stock</option>
-                            <option value="No Stock">No Stock</option>
                           </select>
                         </td>
 
@@ -191,7 +222,8 @@ export default function FormProduction({ order, onClose, onSuccess }) {
                           {prod.stockStatus === 'In Stock' ? (
                             <input
                               type="number"
-                              className="w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:border-indigo-500 text-center"
+                              disabled={!prod._selected}
+                              className={`w-full text-xs border rounded p-1.5 focus:outline-none focus:border-indigo-500 text-center ${!prod._selected ? 'border-transparent bg-transparent text-gray-400 font-bold' : 'border-gray-300 bg-white'}`}
                               placeholder="Qty"
                               value={prod.approveQty}
                               onChange={(e) => handleItemChange(idx, 'approveQty', e.target.value)}
@@ -205,7 +237,8 @@ export default function FormProduction({ order, onClose, onSuccess }) {
                           {prod.stockStatus === 'In Stock' ? (
                             <input
                               type="text"
-                              className="w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:border-indigo-500 text-center"
+                              disabled={!prod._selected}
+                              className={`w-full text-xs border rounded p-1.5 focus:outline-none focus:border-indigo-500 text-center ${!prod._selected ? 'border-transparent bg-transparent text-gray-400' : 'border-gray-300 bg-white'}`}
                               placeholder="Batch"
                               value={prod.batchNo}
                               onChange={(e) => handleItemChange(idx, 'batchNo', e.target.value)}
@@ -218,7 +251,8 @@ export default function FormProduction({ order, onClose, onSuccess }) {
                         <td className="px-3 py-2 align-top">
                           <input
                             type="text"
-                            className="w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:border-indigo-500"
+                            disabled={!prod._selected}
+                            className={`w-full text-xs border rounded p-1.5 focus:outline-none focus:border-indigo-500 ${!prod._selected ? 'border-transparent bg-transparent text-gray-400 placeholder-transparent' : 'border-gray-300 bg-white'}`}
                             placeholder="Remarks..."
                             value={prod.remarks}
                             onChange={(e) => handleItemChange(idx, 'remarks', e.target.value)}
@@ -244,7 +278,8 @@ export default function FormProduction({ order, onClose, onSuccess }) {
           </button>
           <button
             onClick={handleSave}
-            className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm"
+            disabled={items.filter(i => i._selected !== false).length === 0}
+            className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle size={16} /> Save Production
           </button>

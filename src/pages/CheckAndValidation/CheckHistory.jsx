@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import DataTable from '../../components/DataTable';
-import { ChevronDown, ChevronUp, Eye, Info, ClipboardList } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, Info, ClipboardList, CheckSquare } from 'lucide-react';
+import { isPdfDataUrl } from '../../utils/helpers';
 import InfoPopover from '../../components/InfoPopover';
 import CheckForm from './CheckForm';
 
@@ -155,13 +156,22 @@ export default function CheckHistory({ data, filters, refresh }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {item.items?.map((prod, idx) => {
+                      {item.items?.map((prod, idx) => ({
+                        ...prod,
+                        productNumber: `${item.orderId}-${String(idx + 1).padStart(2, '0')}`,
+                        originalIndex: idx
+                      }))
+                      .filter(prod => item.checkedProductNumbers?.includes(prod.productNumber))
+                      .map((prod) => {
                         const basic = (parseFloat(prod.qty) || 0) * (parseFloat(prod.priceRate) || 0);
                         const gstPerc = parseFloat(prod.gstPercent || item.globalGstPercent || '0');
                         const gstValue = basic * (gstPerc / 100);
                         return (
-                          <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3 text-[11px] text-indigo-600 font-bold text-center">{`${item.orderId}-${String(idx + 1).padStart(2, '0')}`}</td>
+                          <tr key={prod.originalIndex} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-4 py-3 text-[11px] text-indigo-600 font-bold text-center">
+                              <CheckSquare size={12} className="inline mr-1 text-emerald-500" />
+                              {prod.productNumber}
+                            </td>
                             <td className="px-4 py-3 text-[11px] text-gray-800 font-medium">{prod.productName}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 text-center">{prod.qty}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-500 text-center"><span className="bg-gray-100 px-2 py-0.5 rounded">{prod.uom}</span></td>
@@ -237,7 +247,11 @@ export default function CheckHistory({ data, filters, refresh }) {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={() => setShowImageModal(false)}>
           <div className="bg-white rounded-2xl max-w-3xl w-full p-2 relative shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="overflow-auto max-h-[85vh] rounded-xl">
-              <img src={selectedImage} alt="Attachment" className="w-full h-auto" />
+              {isPdfDataUrl(selectedImage) ? (
+                <iframe src={selectedImage} title="PDF Preview" className="w-full h-[80vh] rounded-xl bg-white" />
+              ) : (
+                <img src={selectedImage} alt="Attachment" className="w-full h-auto" />
+              )}
             </div>
           </div>
         </div>

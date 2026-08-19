@@ -1,22 +1,18 @@
 import React, { useState } from 'react';
 import { Search, Plus, Users, Building2, Layers, FolderTree, Scale, Building, FileText, Truck, UserCircle, Package } from 'lucide-react';
 import PartyMaster from './PartyMaster';
-import Company from './Company';
 import Division from './Division';
 import UOM from './UOM';
 import Item from './Item';
-import TermsCondition from './TermsCondition';
 import TransportingType from './TransportingType';
 import TransporterAgency from './TransporterAgency';
 import OrderReceivedBy from './OrderReceivedBy';
 
 const masterTabs = [
   { id: 'Party', label: 'Party Details', icon: Users },
-  { id: 'Company', label: 'Company Details', icon: Building2 },
   { id: 'Division', label: 'Division Details', icon: Layers },
   { id: 'UOM', label: 'UOM', icon: Scale },
   { id: 'Product', label: 'Product Name', icon: Package },
-  { id: 'Terms & Condition', label: 'Terms & Condition', icon: FileText },
   { id: 'Transporting Type', label: 'Transporting Type', icon: Truck },
   { id: 'Transporter Agency', label: 'Transporter Agency', icon: Truck },
   { id: 'Order Received By', label: 'Order Received By', icon: UserCircle },
@@ -28,10 +24,8 @@ export default function Master() {
   
   // Triggers to open Add Modal in child components
   const [triggerAddParty, setTriggerAddParty] = useState(0);
-  const [triggerAddCompany, setTriggerAddCompany] = useState(0);
   const [triggerAddDivision, setTriggerAddDivision] = useState(0);
   const [triggerAddUOM, setTriggerAddUOM] = useState(0);
-  const [triggerAddTC, setTriggerAddTC] = useState(0);
   const [triggerAddTT, setTriggerAddTT] = useState(0);
   const [triggerAddTA, setTriggerAddTA] = useState(0);
   const [triggerAddPerson, setTriggerAddPerson] = useState(0);
@@ -39,11 +33,9 @@ export default function Master() {
 
   const handleAddClick = () => {
     if (activeTab === 'Party') setTriggerAddParty(prev => prev + 1);
-    else if (activeTab === 'Company') setTriggerAddCompany(prev => prev + 1);
     else if (activeTab === 'Division') setTriggerAddDivision(prev => prev + 1);
     else if (activeTab === 'UOM') setTriggerAddUOM(prev => prev + 1);
     else if (activeTab === 'Product') setTriggerAddItem(prev => prev + 1);
-    else if (activeTab === 'Terms & Condition') setTriggerAddTC(prev => prev + 1);
     else if (activeTab === 'Transporting Type') setTriggerAddTT(prev => prev + 1);
     else if (activeTab === 'Transporter Agency') setTriggerAddTA(prev => prev + 1);
     else if (activeTab === 'Order Received By') setTriggerAddPerson(prev => prev + 1);
@@ -136,11 +128,9 @@ export default function Master() {
         {/* Content Render */}
         <div className="flex-1 overflow-hidden bg-white flex flex-col relative rounded-b-xl">
             {activeTab === 'Party' && <PartyMaster searchQuery={searchQuery} triggerAdd={triggerAddParty} />}
-            {activeTab === 'Company' && <Company searchQuery={searchQuery} triggerAdd={triggerAddCompany} />}
             {activeTab === 'Division' && <Division searchQuery={searchQuery} triggerAdd={triggerAddDivision} />}
             {activeTab === 'UOM' && <UOM searchQuery={searchQuery} triggerAdd={triggerAddUOM} />}
             {activeTab === 'Product' && <Item searchQuery={searchQuery} triggerAdd={triggerAddItem} />}
-            {activeTab === 'Terms & Condition' && <TermsCondition searchQuery={searchQuery} triggerAdd={triggerAddTC} />}
             {activeTab === 'Transporting Type' && <TransportingType searchQuery={searchQuery} triggerAdd={triggerAddTT} />}
             {activeTab === 'Transporter Agency' && <TransporterAgency searchQuery={searchQuery} triggerAdd={triggerAddTA} />}
             {activeTab === 'Order Received By' && <OrderReceivedBy searchQuery={searchQuery} triggerAdd={triggerAddPerson} />}

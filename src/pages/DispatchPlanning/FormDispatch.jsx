@@ -13,25 +13,29 @@ export default function FormDispatch({ order, onClose, onSuccess }) {
     // Filter out ones that are already fully dispatched
     const allDispatch = getDispatchHistory() || [];
     const pendingDeliveries = orderDeliveries.filter(delivery => {
-      const dispatchedQty = allDispatch
+      const clearedQty = allDispatch
         .filter(dh => dh.deliveryApproverId === delivery.deliveryApproverId)
-        .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0), 0);
+        .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0) + (parseFloat(dh.cancelQty) || 0), 0);
       const totalQty = parseFloat(delivery.approveQty) || parseFloat(delivery.qty) || 0;
-      return (totalQty - dispatchedQty) > 0;
+      return (totalQty - clearedQty) > 0;
     });
 
     return pendingDeliveries.map(item => {
       const dispatchedQty = allDispatch
         .filter(dh => dh.deliveryApproverId === item.deliveryApproverId)
         .reduce((sum, dh) => sum + (parseFloat(dh.dispatchQty) || 0), 0);
+      const canceledQty = allDispatch
+        .filter(dh => dh.deliveryApproverId === item.deliveryApproverId)
+        .reduce((sum, dh) => sum + (parseFloat(dh.cancelQty) || 0), 0);
       const totalQty = parseFloat(item.approveQty) || parseFloat(item.qty) || 0;
-      const pendingQty = totalQty - dispatchedQty;
+      const pendingQty = totalQty - dispatchedQty - canceledQty;
       return {
         ...item,
         totalQty,
         dispatchedQty,
         pendingQty,
         dispatchQty: pendingQty,
+        cancelQty: '',
         _selected: false,
         dispatchDate: new Date().toISOString().split('T')[0],
         dispatchRemarks: ''
@@ -61,8 +65,18 @@ export default function FormDispatch({ order, onClose, onSuccess }) {
       if (!item.dispatchDate) {
         return toast.error(`Please select a dispatch date for ${item.productName}`);
       }
-      if (!item.dispatchQty || parseFloat(item.dispatchQty) <= 0 || parseFloat(item.dispatchQty) > parseFloat(item.pendingQty)) {
-        return toast.error(`Please enter a valid Dispatch Qty for ${item.productName}`);
+      
+      const dQty = parseFloat(item.dispatchQty) || 0;
+      const cQty = parseFloat(item.cancelQty) || 0;
+
+      if (dQty < 0 || cQty < 0) {
+        return toast.error(`Negative quantities are not allowed for ${item.productName}`);
+      }
+      if (dQty === 0 && cQty === 0) {
+        return toast.error(`Please enter Dispatch or Cancel Qty for ${item.productName}`);
+      }
+      if ((dQty + cQty) > parseFloat(item.pendingQty)) {
+        return toast.error(`Total of Dispatch and Cancel Qty cannot exceed Pending Qty for ${item.productName}`);
       }
     }
 
@@ -174,6 +188,7 @@ export default function FormDispatch({ order, onClose, onSuccess }) {
                     <th className="px-3 py-3 font-bold text-right text-indigo-600 whitespace-nowrap">Grand Total</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Dispatch Date</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Dispatch Qty</th>
+                    <th className="px-3 py-3 font-bold text-center text-red-500 whitespace-nowrap">Cancel Qty</th>
                     <th className="px-3 py-3 font-bold whitespace-nowrap w-[15%]">Remarks</th>
                   </tr>
                 </thead>
@@ -230,6 +245,17 @@ export default function FormDispatch({ order, onClose, onSuccess }) {
                             placeholder="Qty"
                             value={prod.dispatchQty}
                             onChange={(e) => handleItemChange(idx, 'dispatchQty', e.target.value)}
+                          />
+                        </td>
+
+                        <td className="px-3 py-2 align-middle">
+                          <input
+                            type="number"
+                            disabled={!prod._selected}
+                            className={`w-full text-[11px] border rounded p-1.5 focus:outline-none focus:border-red-500 text-center ${prod._selected ? 'border-gray-300 bg-white text-red-600 font-bold' : 'border-transparent bg-transparent text-gray-400'}`}
+                            placeholder="Qty"
+                            value={prod.cancelQty}
+                            onChange={(e) => handleItemChange(idx, 'cancelQty', e.target.value)}
                           />
                         </td>
 

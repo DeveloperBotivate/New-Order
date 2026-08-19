@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, X, FileImage } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import { getInvoiceHistory } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function HistoryInvoice({ data, filters }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -49,6 +50,7 @@ export default function HistoryInvoice({ data, filters }) {
     { label: "Order ID", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[110px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name",
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount",
+    "Transport Name", "Vehicle Plate Number", "Driver Full Name", "Driver Mobile Contact",
     "Invoice Number", "Invoice Date", "Invoice Amount", "Remarks",
     { label: "Invoice Copy", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[100px]" }
   ];
@@ -75,6 +77,11 @@ export default function HistoryInvoice({ data, filters }) {
     const totalProductCount = orderInvoiceItems.length;
     
     // Assume Invoice details are consistent for this order's invoice entry
+    const transportAgency = orderInvoiceItems[0]?.transportAgency || '-';
+    const vehicleNo = orderInvoiceItems[0]?.vehicleNo || '-';
+    const driverName = orderInvoiceItems[0]?.driverName || '-';
+    const driverMobile = orderInvoiceItems[0]?.driverMobile || '-';
+    
     const invoiceNo = orderInvoiceItems[0]?.invoiceNumber || '-';
     const invoiceDate = orderInvoiceItems[0]?.invoiceDate || '-';
     const invoiceAmount = orderInvoiceItems[0]?.invoiceAmount || '0';
@@ -110,6 +117,11 @@ export default function HistoryInvoice({ data, filters }) {
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{order.advancePayment || 'No'}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-green-600 whitespace-nowrap">₹{order.advanceAmount || '0'}</td>
           
+          <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{transportAgency}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{vehicleNo}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{driverName}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{driverMobile}</td>
+
           <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{invoiceNo}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-gray-800 whitespace-nowrap">{invoiceDate}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-green-600 whitespace-nowrap">₹{invoiceAmount}</td>
@@ -128,7 +140,7 @@ export default function HistoryInvoice({ data, filters }) {
 
         {isExpanded && (
           <tr>
-            <td colSpan="19" className="p-0 border-b border-indigo-50 bg-indigo-50/30">
+            <td colSpan="23" className="p-0 border-b border-indigo-50 bg-indigo-50/30">
               <div className="sticky left-0 w-[90vw] md:w-[80vw] lg:w-[75vw] max-w-[1200px] p-4 pl-8 md:pl-12 animate-in slide-in-from-top-2 duration-200">
                 <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
                   <table className="w-full text-left border-collapse">
@@ -209,7 +221,11 @@ export default function HistoryInvoice({ data, filters }) {
             <button onClick={() => setViewImage(null)} className="absolute top-4 right-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg p-2 transition-colors">
               <X size={20} />
             </button>
-            <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            )}
           </div>
         </div>
       )}

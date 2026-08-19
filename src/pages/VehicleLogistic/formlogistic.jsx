@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, CheckCircle, Truck, UploadCloud } from 'lucide-react';
 import { saveLogisticTransaction, getPackagingHistory, getLogisticHistory, getTransporterAgencies } from '../../utils/storageManager';
-import { compressImageFile } from '../../utils/helpers';
+import { compressImageFile, validateAttachmentFile, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
 export default function Formlogistic({ order, onClose, onSuccess }) {
@@ -17,8 +17,6 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
   const [transporterAmount, setTransporterAmount] = useState('');
   const [lrCopy, setLrCopy] = useState(null);
   const [biltyStatus, setBiltyStatus] = useState('Select');
-  const [biltyNumber, setBiltyNumber] = useState('');
-  const [biltyCopy, setBiltyCopy] = useState(null);
   const [remarks, setRemarks] = useState('');
 
   const [items, setItems] = useState(() => {
@@ -37,12 +35,6 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
 
   const handleAgencyChange = (agencyName) => {
     setTransportAgency(agencyName);
-    const agency = agencies.find(a => a.name === agencyName);
-    if (agency) {
-      setVehicleNo(agency.vehicleNo || '');
-      setDriverName(agency.driverName || '');
-      setDriverMobile(agency.mobile || '');
-    }
   };
 
   const handleItemChange = (index, field, value) => {
@@ -60,6 +52,11 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
   const handleLrCopyUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const sizeError = validateAttachmentFile(file);
+    if (sizeError) {
+      toast.error(sizeError);
+      return;
+    }
     try {
       const compressed = await compressImageFile(file);
       setLrCopy(compressed);
@@ -68,16 +65,7 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
     }
   };
 
-  const handleBiltyCopyUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      const compressed = await compressImageFile(file);
-      setBiltyCopy(compressed);
-    } catch {
-      toast.error('Error reading file');
-    }
-  };
+
 
   const handleSave = () => {
     const selectedItems = items.filter(i => i._selected);
@@ -90,7 +78,7 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
     if (biltyStatus === 'Select') {
       return toast.error('Please select Bilty Status');
     }
-    if (biltyStatus === 'Yes' && !biltyNumber.trim()) {
+    if (biltyStatus === 'Yes' && !lrNumber.trim()) {
       return toast.error('Please enter Bilty Number');
     }
 
@@ -100,12 +88,10 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
       vehicleNo,
       driverName,
       driverMobile,
-      lrNumber,
-      transporterAmount,
-      lrCopy,
+      lrNumber: biltyStatus === 'Yes' ? lrNumber : '',
+      transporterAmount: biltyStatus === 'Yes' ? transporterAmount : '',
+      lrCopy: biltyStatus === 'Yes' ? lrCopy : null,
       biltyStatus,
-      biltyNumber: biltyStatus === 'Yes' ? biltyNumber : '',
-      biltyCopy: biltyStatus === 'Yes' ? biltyCopy : null,
       logisticRemarks: remarks
     }));
 
@@ -325,60 +311,7 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
                   />
                 </div>
 
-                {/* Lorry Receipt (LR) */}
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Lorry Receipt (LR)</label>
-                  <input
-                    type="text"
-                    value={lrNumber}
-                    onChange={(e) => setLrNumber(e.target.value)}
-                    placeholder="LR Number"
-                    className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
-                  />
-                </div>
 
-                {/* Transporter Amount */}
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Transporter Amount (₹)</label>
-                  <input
-                    type="number"
-                    value={transporterAmount}
-                    onChange={(e) => setTransporterAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
-                  />
-                </div>
-
-                {/* LR Copy Upload */}
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">LR Copy Upload <span className="text-gray-400 font-normal normal-case">(Optional)</span></label>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLrCopyUpload}
-                      className="hidden"
-                      id="lr-copy-upload"
-                    />
-                    <label
-                      htmlFor="lr-copy-upload"
-                      className="flex items-center justify-center gap-2 w-full border border-gray-300 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-50 transition-colors"
-                    >
-                      <UploadCloud size={18} className={lrCopy ? "text-emerald-500" : "text-gray-400"} />
-                      <span className={`text-sm font-medium ${lrCopy ? 'text-emerald-600' : 'text-gray-500'}`}>
-                        {lrCopy ? 'LR Copy Uploaded' : 'Upload LR Copy'}
-                      </span>
-                    </label>
-                    {lrCopy && (
-                      <button
-                        onClick={(e) => { e.preventDefault(); setLrCopy(null); }}
-                        className="absolute right-2 top-2 text-red-500 hover:text-red-700"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
-                  </div>
-                </div>
 
                 {/* Bilty Status */}
                 <div>
@@ -401,36 +334,48 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
                       <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Bilty Number <span className="text-red-500">*</span></label>
                       <input
                         type="text"
-                        value={biltyNumber}
-                        onChange={(e) => setBiltyNumber(e.target.value)}
-                        placeholder="Enter bilty number"
+                        value={lrNumber}
+                        onChange={(e) => setLrNumber(e.target.value)}
+                        placeholder="Bilty Number"
                         className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
                       />
                     </div>
 
-                    {/* Bilty Copy */}
+                    {/* Transporter Amount */}
                     <div>
-                      <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Bilty Copy <span className="text-gray-400 font-normal normal-case">(Optional)</span></label>
+                      <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Transporter Amount (₹)</label>
+                      <input
+                        type="number"
+                        value={transporterAmount}
+                        onChange={(e) => setTransporterAmount(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
+                      />
+                    </div>
+
+                    {/* Bilty Copy Upload */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Bilty Copy Upload <span className="text-gray-400 font-normal normal-case">(Optional, Image or PDF, max {MAX_ATTACHMENT_SIZE_MB}MB)</span></label>
                       <div className="relative">
                         <input
                           type="file"
-                          accept="image/*"
-                          onChange={handleBiltyCopyUpload}
+                          accept={ATTACHMENT_ACCEPT}
+                          onChange={handleLrCopyUpload}
                           className="hidden"
-                          id="bilty-copy-upload"
+                          id="lr-copy-upload"
                         />
                         <label
-                          htmlFor="bilty-copy-upload"
+                          htmlFor="lr-copy-upload"
                           className="flex items-center justify-center gap-2 w-full border border-gray-300 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-50 transition-colors"
                         >
-                          <UploadCloud size={18} className={biltyCopy ? "text-emerald-500" : "text-gray-400"} />
-                          <span className={`text-sm font-medium ${biltyCopy ? 'text-emerald-600' : 'text-gray-500'}`}>
-                            {biltyCopy ? 'Copy Uploaded' : 'Upload Copy'}
+                          <UploadCloud size={18} className={lrCopy ? "text-emerald-500" : "text-gray-400"} />
+                          <span className={`text-sm font-medium ${lrCopy ? 'text-emerald-600' : 'text-gray-500'}`}>
+                            {lrCopy ? 'Bilty Copy Uploaded' : 'Upload Bilty Copy'}
                           </span>
                         </label>
-                        {biltyCopy && (
+                        {lrCopy && (
                           <button
-                            onClick={(e) => { e.preventDefault(); setBiltyCopy(null); }}
+                            onClick={(e) => { e.preventDefault(); setLrCopy(null); }}
                             className="absolute right-2 top-2 text-red-500 hover:text-red-700"
                           >
                             <X size={16} />

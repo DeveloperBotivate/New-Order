@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, X, FileImage } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import { getLogisticHistory } from '../../utils/storageManager';
+import { isPdfDataUrl } from '../../utils/helpers';
 
 export default function Historylogistic({ data, filters }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -49,9 +50,8 @@ export default function Historylogistic({ data, filters }) {
     { label: "Order ID", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[110px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name",
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount",
-    "Transport Name", "Vehicle Plate Number", "Driver Full Name", "Driver Mobile Contact", "Lorry Receipt (LR)",
-    "Transporter Amount", "Bilty Status", "Bilty Number",
-    { label: "LR Copy", className: "sticky right-[80px] bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[80px]" },
+    "Transport Name", "Vehicle Plate Number", "Driver Full Name", "Driver Mobile Contact", "Bilty Status", "Bilty Number",
+    "Transporter Amount",
     { label: "Bilty Copy", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[80px]" }
   ];
 
@@ -85,9 +85,7 @@ export default function Historylogistic({ data, filters }) {
     const lrNumber = latest.lrNumber || '-';
     const transporterAmount = latest.transporterAmount;
     const biltyStatus = latest.biltyStatus || '-';
-    const biltyNumber = latest.biltyNumber || '-';
     const lrCopy = latest.lrCopy;
-    const biltyCopy = latest.biltyCopy;
 
     return (
       <React.Fragment key={order.orderId}>
@@ -122,23 +120,13 @@ export default function Historylogistic({ data, filters }) {
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{vehicleNo}</td>
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{driverName}</td>
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{driverMobile}</td>
-          <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{lrNumber}</td>
-          <td className="px-3 py-3 text-center text-[11px] font-medium text-emerald-600 whitespace-nowrap">{transporterAmount ? `₹${transporterAmount}` : '-'}</td>
           <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{biltyStatus}</td>
-          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{biltyNumber}</td>
+          <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{biltyStatus === 'Yes' ? lrNumber : '-'}</td>
+          <td className="px-3 py-3 text-center text-[11px] font-medium text-emerald-600 whitespace-nowrap">{biltyStatus === 'Yes' && transporterAmount ? `₹${transporterAmount}` : '-'}</td>
 
-          <td className="px-3 py-3 text-center whitespace-nowrap sticky right-[80px] z-10 shadow-[-1px_0_0_0_#e5e7eb] transition-colors bg-white group-hover:bg-slate-50" onClick={(e) => e.stopPropagation()}>
-            {lrCopy ? (
-              <button onClick={(e) => handleImageView(lrCopy, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
-                <FileImage size={16} />
-              </button>
-            ) : (
-              <span className="text-gray-400 text-xs">-</span>
-            )}
-          </td>
           <td className="px-3 py-3 text-center whitespace-nowrap sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb] transition-colors bg-white group-hover:bg-slate-50" onClick={(e) => e.stopPropagation()}>
-            {biltyCopy ? (
-              <button onClick={(e) => handleImageView(biltyCopy, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
+            {biltyStatus === 'Yes' && lrCopy ? (
+              <button onClick={(e) => handleImageView(lrCopy, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
                 <FileImage size={16} />
               </button>
             ) : (
@@ -230,7 +218,11 @@ export default function Historylogistic({ data, filters }) {
             <button onClick={() => setViewImage(null)} className="absolute top-4 right-4 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg p-2 transition-colors">
               <X size={20} />
             </button>
-            <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            {isPdfDataUrl(viewImage) ? (
+              <iframe src={viewImage} title="PDF Preview" className="w-full h-[80vh] rounded-lg bg-white" />
+            ) : (
+              <img src={viewImage} alt="Document" className="block w-full h-auto rounded-lg object-contain max-h-[85vh]" />
+            )}
           </div>
         </div>
       )}
