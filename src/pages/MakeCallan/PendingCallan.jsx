@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, ChevronUp, CheckSquare, Eye, Upload } from 'lucide-react';
+import { ChevronDown, ChevronUp, CheckSquare, Eye, Upload, X } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import FormCallan from './FormCallan';
 import { getPackagingHistory, getLogisticHistory, getCallanHistory } from '../../utils/storageManager';
@@ -17,11 +17,6 @@ export default function PendingCallan({ data, filters, onSuccess }) {
     return data.filter(item => {
       if (filters.division && item.division !== filters.division) return false;
       if (filters.partyName && item.partyName !== filters.partyName) return false;
-      if (filters.fromDate || filters.toDate) {
-        const d = item.poDate;
-        if (filters.fromDate && d < filters.fromDate) return false;
-        if (filters.toDate && d > filters.toDate) return false;
-      }
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase();
         return (
@@ -146,14 +141,14 @@ export default function PendingCallan({ data, filters, onSuccess }) {
           <td className="px-3 py-3 text-center text-[11px] font-medium text-emerald-600 whitespace-nowrap">{order.advanceAmount ? `₹${order.advanceAmount}` : '-'}</td>
           
           <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{orderLogistic?.transportAgency || '-'}</td>
-          <td className="px-3 py-3 text-center text-[11px] font-medium text-gray-700 whitespace-nowrap">{orderLogistic?.vehiclePlateNumber || '-'}</td>
-          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{orderLogistic?.driverFullName || '-'}</td>
-          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{orderLogistic?.driverMobileContact || '-'}</td>
-          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{orderLogistic?.lorryReceipt || '-'}</td>
-          
+          <td className="px-3 py-3 text-center text-[11px] font-medium text-gray-700 whitespace-nowrap">{orderLogistic?.vehicleNo || '-'}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{orderLogistic?.driverName || '-'}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{orderLogistic?.driverMobile || '-'}</td>
+          <td className="px-3 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{orderLogistic?.lrNumber || '-'}</td>
+
           <td className="px-3 py-3 whitespace-nowrap sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb] transition-colors bg-white group-hover:bg-slate-50 text-center" onClick={(e) => e.stopPropagation()}>
-            {orderLogistic?.lrCopyUpload ? (
-              <button onClick={(e) => handleImageView(orderLogistic.lrCopyUpload, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
+            {orderLogistic?.lrCopy ? (
+              <button onClick={(e) => handleImageView(orderLogistic.lrCopy, e)} className="text-indigo-600 hover:text-indigo-800 flex justify-center w-full focus:outline-none">
                 <Eye size={16} />
               </button>
             ) : (

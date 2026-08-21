@@ -16,12 +16,6 @@ export default function HistoryAdvance({ data, filters }) {
   const filteredData = data.filter(item => {
     if (filters.division && item.division !== filters.division) return false;
 
-    if (filters.fromDate || filters.toDate) {
-      const date = item.paymentDate;
-      if (filters.fromDate && date < filters.fromDate) return false;
-      if (filters.toDate && date > filters.toDate) return false;
-    }
-
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
       return (

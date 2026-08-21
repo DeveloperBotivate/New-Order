@@ -39,11 +39,11 @@ export default function FormPackaging({ order, onClose, onSuccess }) {
     });
 
     return pendingItems.map(item => {
-      // If it was previously marked as 'No', keep that state, otherwise 'Select'
+      // If it was previously marked as 'No', keep that state, otherwise default to 'Yes'
       const prevAction = allPackaging.filter(ph => ph.dispatchId === item.dispatchId).pop();
       return {
         ...item,
-        packagingStatus: prevAction ? prevAction.packagingStatus : 'Select',
+        packagingStatus: prevAction ? prevAction.packagingStatus : 'Yes',
         productRemarks: '',
         _selected: false
       };

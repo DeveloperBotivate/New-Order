@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, Filter, Eye, X, Calendar, 
+import {
+  Search, Filter, Eye, X,
   RotateCcw, ChevronDown, ChevronUp, FileText, Download, Info, Check
 } from 'lucide-react';
 import { getReceivedOrders, getDivisions } from '../../utils/storageManager';
@@ -20,8 +20,6 @@ export default function ReceivedOrder() {
   // Filters State
   const [filters, setFilters] = useState({
     searchQuery: '',
-    fromDate: '',
-    toDate: '',
     division: '',
     partyName: ''
   });
@@ -36,7 +34,7 @@ export default function ReceivedOrder() {
 
   const handleClearFilters = () => {
     setFilters({
-      searchQuery: '', fromDate: '', toDate: '', division: '', partyName: ''
+      searchQuery: '', division: '', partyName: ''
     });
     setCurrentPage(1);
   };
@@ -60,13 +58,7 @@ export default function ReceivedOrder() {
   const filteredOrders = orders.filter(item => {
     if (filters.division && item.division !== filters.division) return false;
     if (filters.partyName && item.partyName !== filters.partyName) return false;
-    
-    if (filters.fromDate || filters.toDate) {
-      const date = item.poDate;
-      if (filters.fromDate && date < filters.fromDate) return false;
-      if (filters.toDate && date > filters.toDate) return false;
-    }
-    
+
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
       return (
@@ -305,27 +297,6 @@ export default function ReceivedOrder() {
           </div>
 
           <div className={`${showMobileFilters ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row gap-2 w-full lg:w-auto lg:flex-[8]`}>
-             <div className="flex flex-row gap-2 w-full lg:w-auto lg:contents">
-                <div className="flex-1 min-w-0 lg:min-w-[150px] relative">
-                  <Calendar className="absolute left-2.5 top-[9px] lg:top-[12px] text-gray-400 pointer-events-none" size={14} />
-                  <input
-                    type="text" placeholder="From Date"
-                    onFocus={(e) => (e.target.type = 'date')} onBlur={(e) => { if (!e.target.value) e.target.type = 'text'; }}
-                    value={filters.fromDate} onChange={(e) => setFilters({ ...filters, fromDate: e.target.value })}
-                    className="w-full bg-white border border-gray-300 rounded lg:rounded pl-8 pr-2 py-1.5 focus:outline-none focus:border-indigo-500 text-[11px] md:text-xs h-[32px] md:h-[38px]"
-                  />
-                </div>
-                <div className="flex-1 min-w-0 lg:min-w-[150px] relative">
-                  <Calendar className="absolute left-2.5 top-[9px] lg:top-[12px] text-gray-400 pointer-events-none" size={14} />
-                  <input
-                    type="text" placeholder="To Date"
-                    onFocus={(e) => (e.target.type = 'date')} onBlur={(e) => { if (!e.target.value) e.target.type = 'text'; }}
-                    value={filters.toDate} onChange={(e) => setFilters({ ...filters, toDate: e.target.value })}
-                    className="w-full bg-white border border-gray-300 rounded lg:rounded pl-8 pr-2 py-1.5 focus:outline-none focus:border-indigo-500 text-[11px] md:text-xs h-[32px] md:h-[38px]"
-                  />
-                </div>
-             </div>
-
              <div className="flex-1 min-w-0 lg:min-w-[150px]">
                <SearchableDropdown
                  options={divisions.map(d => ({ value: d.name, label: d.name }))}

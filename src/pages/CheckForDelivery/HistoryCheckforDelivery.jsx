@@ -24,11 +24,6 @@ export default function HistoryCheckforDelivery({ data, filters, refresh }) {
     return historyOrders.filter(item => {
       if (filters.division && item.division !== filters.division) return false;
       if (filters.partyName && item.partyName !== filters.partyName) return false;
-      if (filters.fromDate || filters.toDate) {
-        const d = item.poDate;
-        if (filters.fromDate && d < filters.fromDate) return false;
-        if (filters.toDate && d > filters.toDate) return false;
-      }
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase();
         return (
@@ -137,6 +132,7 @@ export default function HistoryCheckforDelivery({ data, filters, refresh }) {
                         <th className="px-4 py-3 font-bold text-right text-indigo-600 whitespace-nowrap">Grand Total</th>
                         <th className="px-4 py-3 font-bold text-center whitespace-nowrap">Stock Status</th>
                         <th className="px-4 py-3 font-bold text-center whitespace-nowrap">Approve Qty</th>
+                        <th className="px-4 py-3 font-bold text-center whitespace-nowrap">Production Qty</th>
                         <th className="px-4 py-3 font-bold text-center whitespace-nowrap">Batch No.</th>
                         <th className="px-4 py-3 font-bold whitespace-nowrap">Remarks</th>
                       </tr>
@@ -170,6 +166,7 @@ export default function HistoryCheckforDelivery({ data, filters, refresh }) {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-center text-[11px] font-bold text-emerald-600 whitespace-nowrap">{hist.approveQty || '-'}</td>
+                            <td className="px-4 py-3 text-center text-[11px] font-bold text-amber-600 whitespace-nowrap">{hist.productionQty || '-'}</td>
                             <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{hist.batchNo || '-'}</td>
                             <td className="px-4 py-3 text-left whitespace-nowrap text-[11px] text-gray-600 max-w-[150px] truncate" title={hist.remarks}>{hist.remarks || '-'}</td>
                           </tr>

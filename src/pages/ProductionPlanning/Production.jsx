@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Calendar, RotateCcw } from 'lucide-react';
+import { Search, Filter, RotateCcw } from 'lucide-react';
 import { getReceivedOrders, getDeliveryHistory, getCheckedProductNumbers } from '../../utils/storageManager';
 import PendingProduction from './PendingProduction';
 import HistoryProduction from './HistoryProduction';
@@ -11,12 +11,10 @@ export default function Production() {
   const [orders, setOrders] = useState([]);
   const [history, setHistory] = useState([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [filters, setFilters] = useState({ 
-    searchQuery: '', 
-    fromDate: '', 
-    toDate: '', 
-    division: '', 
-    partyName: '' 
+  const [filters, setFilters] = useState({
+    searchQuery: '',
+    division: '',
+    partyName: ''
   });
 
   const refreshData = () => {
@@ -29,7 +27,7 @@ export default function Production() {
   }, []);
 
   const handleClearFilters = () =>
-    setFilters({ searchQuery: '', fromDate: '', toDate: '', division: '', partyName: '' });
+    setFilters({ searchQuery: '', division: '', partyName: '' });
 
   // Only show orders with items that have passed Check & Validation (per product line)
   // and have "No Stock" unproduced items
@@ -98,20 +96,6 @@ export default function Production() {
           </div>
 
           <div className={`${showMobileFilters ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row lg:flex-nowrap gap-2 w-full lg:w-auto lg:flex-[8] items-center`}>
-            <div className="flex flex-row gap-2 w-full lg:w-auto lg:contents">
-              {['From Date', 'To Date'].map((ph, idx) => (
-                <div key={ph} className="flex-1 min-w-0 lg:min-w-[140px] relative">
-                  <Calendar className="absolute left-2.5 top-[9px] lg:top-[12px] text-gray-400 pointer-events-none" size={14} />
-                  <input type="text" placeholder={ph}
-                    onFocus={(e) => (e.target.type = 'date')}
-                    onBlur={(e) => { if (!e.target.value) e.target.type = 'text'; }}
-                    value={idx === 0 ? filters.fromDate : filters.toDate}
-                    onChange={(e) => setFilters({ ...filters, [idx === 0 ? 'fromDate' : 'toDate']: e.target.value })}
-                    className="w-full bg-white border border-gray-300 rounded pl-8 pr-2 py-1.5 focus:outline-none focus:border-indigo-500 text-[11px] md:text-xs h-[32px] md:h-[38px]"
-                  />
-                </div>
-              ))}
-            </div>
             <div className="flex flex-row gap-2 w-full lg:w-auto lg:contents">
               <div className="flex-1 min-w-0 lg:min-w-[120px]">
                 <SearchableDropdown options={divisionOptions} value={filters.division}

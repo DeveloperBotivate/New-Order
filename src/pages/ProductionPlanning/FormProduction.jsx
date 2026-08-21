@@ -11,11 +11,16 @@ export default function FormProduction({ order, onClose, onSuccess }) {
     const orderHistory = history.filter(h => h.orderId === order.orderId && h.stockStatus === 'No Stock' && !h.produced);
     
     return orderHistory.map(hist => {
+      // `productionQty` is the actual amount this record needs producing (it
+      // can be less than `qty`, e.g. when only part of the order line was
+      // short of stock); fall back to `qty` for records saved before this
+      // field existed, where the whole line was always the amount needed.
+      const produceQty = hist.productionQty ?? hist.qty;
       return {
         ...hist,
         // Reset these for the production action
         stockStatus: 'In Stock', // Default to In Stock
-        approveQty: hist.qty || '', // Default to full qty
+        approveQty: produceQty || '', // Default to the amount actually needed
         batchNo: '',
         remarks: '',
         _selected: true
@@ -31,14 +36,15 @@ export default function FormProduction({ order, onClose, onSuccess }) {
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
-    
+
     if (field === 'stockStatus') {
       if (value === 'No Stock') {
         newItems[index].approveQty = '';
         newItems[index].batchNo = '';
       } else if (value === 'In Stock') {
         newItems[index].batchNo = '';
-        newItems[index].approveQty = newItems[index].qty || ''; // Default to full qty
+        const produceQty = newItems[index].productionQty ?? newItems[index].qty;
+        newItems[index].approveQty = produceQty || ''; // Default to the amount actually needed
       }
     }
     setItems(newItems);

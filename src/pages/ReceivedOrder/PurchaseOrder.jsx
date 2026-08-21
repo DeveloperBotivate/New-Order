@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import {
   getDivisions, getVendors, saveVendor, getTransportingTypes, getMasterItems, getUOMs,
-  getReceivedOrders, saveReceivedOrder, getPersons, getIMSStock, getConfirmDeliveryHistory
+  getReceivedOrders, saveReceivedOrder, getPersons, getIMSStock, getConfirmDeliveryHistory,
+  getDispatchHistory, getLogisticHistory, getInvoiceHistory, getPaymentHistory
 } from '../../utils/storageManager';
 import { generateId, compressImageFile, validateAttachmentFile, isPdfDataUrl, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 import ModalForm from '../../components/ModalForm';
@@ -38,7 +39,6 @@ export default function PurchaseOrder() {
   const [uoms, setUoms] = useState([]);
   const [users, setUsers] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [confirmDeliveryHistory, setConfirmDeliveryHistory] = useState([]);
 
   // Table interaction state
   const [expandedRows, setExpandedRows] = useState(new Set());
@@ -76,8 +76,6 @@ export default function PurchaseOrder() {
 
   const [filters, setFilters] = useState({
     searchQuery: '',
-    fromDate: '',
-    toDate: '',
     division: '',
     partyName: ''
   });
@@ -87,7 +85,6 @@ export default function PurchaseOrder() {
 
   const loadOrders = () => {
     setOrders(getReceivedOrders());
-    setConfirmDeliveryHistory(getConfirmDeliveryHistory());
   };
 
   useEffect(() => {
@@ -107,7 +104,7 @@ export default function PurchaseOrder() {
   };
 
   const handleClearFilters = () => {
-    setFilters({ searchQuery: '', fromDate: '', toDate: '', division: '', partyName: '' });
+    setFilters({ searchQuery: '', division: '', partyName: '' });
     setCurrentPage(1);
     toast.success('Filters cleared');
   };
@@ -283,21 +280,27 @@ export default function PurchaseOrder() {
     setShowImageModal(true);
   };
 
-  // An order is "delivered" once Confirm Delivery has marked it Delivered.
-  const deliveredOrderIds = useMemo(() => {
-    return new Set(
-      confirmDeliveryHistory.filter(ch => ch.deliveryStatus === 'Delivered').map(ch => ch.orderId)
-    );
-  }, [confirmDeliveryHistory]);
+  // Order-level Total/Delivered/Pending qty — also drives the Pending vs
+  // History split: an order moves to History once its full ordered qty has
+  // actually been CONFIRMED delivered (via the Confirm Delivery stage), not
+  // merely dispatched. Delivered Qty = sum of dispatch qty for every dispatch
+  // whose Confirm Delivery record has deliveryStatus === 'Delivered'.
+  const getOrderQtySummary = (order) => {
+    const totalQty = (order.items || []).reduce((sum, p) => sum + (parseFloat(p.qty) || 0), 0);
+    const deliveredQty = (getConfirmDeliveryHistory() || [])
+      .filter(c => c.orderId === order.orderId && c.deliveryStatus === 'Delivered')
+      .reduce((sum, c) => sum + (parseFloat(c.dispatchQty) || 0), 0);
+    return { totalQty, deliveredQty, pendingQty: Math.max(0, totalQty - deliveredQty) };
+  };
 
   const pendingOrders = useMemo(
-    () => orders.filter(o => !deliveredOrderIds.has(o.orderId)),
-    [orders, deliveredOrderIds]
+    () => orders.filter(o => getOrderQtySummary(o).pendingQty > 0),
+    [orders]
   );
 
   const historyOrders = useMemo(
-    () => orders.filter(o => deliveredOrderIds.has(o.orderId)),
-    [orders, deliveredOrderIds]
+    () => orders.filter(o => getOrderQtySummary(o).pendingQty === 0),
+    [orders]
   );
 
   const filteredOrders = useMemo(() => {
@@ -305,12 +308,6 @@ export default function PurchaseOrder() {
     return baseList.filter(item => {
       if (filters.division && item.division !== filters.division) return false;
       if (filters.partyName && item.partyName !== filters.partyName) return false;
-
-      if (filters.fromDate || filters.toDate) {
-        const date = item.poDate;
-        if (filters.fromDate && date < filters.fromDate) return false;
-        if (filters.toDate && date > filters.toDate) return false;
-      }
 
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase();
@@ -328,11 +325,89 @@ export default function PurchaseOrder() {
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  // Per product line: Total/Dispatch/Delivery/Pending Delivered qty, plus
+  // order-level payment totals — shown on row expand. Delivery Qty only
+  // counts dispatches actually confirmed 'Delivered' on the Confirm Delivery
+  // stage, matched by dispatchId (a delivery can be confirmed across several
+  // partial dispatches).
+  const buildOrderLifecycle = (order) => {
+    const dispatchHistory = getDispatchHistory() || [];
+    const logisticHistory = getLogisticHistory() || [];
+    const invoiceHistory = getInvoiceHistory() || [];
+    const confirmHistory = getConfirmDeliveryHistory() || [];
+    const paymentHistory = getPaymentHistory() || [];
+
+    const rows = (order.items || []).map((prod, idx) => {
+      const productNumber = `${order.orderId}-${String(idx + 1).padStart(2, '0')}`;
+      const prodDispatch = dispatchHistory.filter(d => d.orderId === order.orderId && d.productNumber === productNumber);
+      const dispatchIds = new Set(prodDispatch.map(d => d.dispatchId));
+      const prodConfirm = confirmHistory.filter(c => dispatchIds.has(c.dispatchId));
+
+      const qty = parseFloat(prod.qty) || 0;
+      const rate = parseFloat(prod.priceRate) || 0;
+      const gstPerc = parseFloat(prod.gstPercent || order.globalGstPercent || '0');
+      const basic = qty * rate;
+      const grandTotal = basic + basic * (gstPerc / 100);
+
+      const dispatchQty = prodDispatch.reduce((sum, d) => sum + (parseFloat(d.dispatchQty) || 0), 0);
+      const deliveredQty = prodConfirm
+        .filter(c => c.deliveryStatus === 'Delivered')
+        .reduce((sum, c) => sum + (parseFloat(c.dispatchQty) || 0), 0);
+
+      return {
+        productNumber, productName: prod.productName, qty, uom: prod.uom,
+        dispatchQty,
+        deliveredQty,
+        pendingQty: Math.max(0, qty - deliveredQty),
+        grandTotal
+      };
+    });
+
+    const advanceRequired = order.advancePayment === 'Yes' ? parseFloat(order.advanceAmount || 0) : 0;
+    const advancePaid = paymentHistory
+      .filter(p => p.orderId === order.orderId && p.paymentType === 'Advance')
+      .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+
+    const orderInvoices = invoiceHistory.filter(inv => inv.orderId === order.orderId);
+    const seenInvoiceNos = new Set();
+    const uniqueInvoiceAmounts = [];
+    orderInvoices.forEach(inv => {
+      if (inv.invoiceNumber && !seenInvoiceNos.has(inv.invoiceNumber)) {
+        seenInvoiceNos.add(inv.invoiceNumber);
+        uniqueInvoiceAmounts.push(parseFloat(inv.invoiceAmount || 0));
+      }
+    });
+    const totalInvoicedValue = uniqueInvoiceAmounts.reduce((sum, v) => sum + v, 0);
+    const vendorExpected = totalInvoicedValue > 0 ? totalInvoicedValue : parseFloat(order.totalPOValue || 0);
+    const vendorPaid = paymentHistory
+      .filter(p => p.orderId === order.orderId && p.paymentType === 'Vendor')
+      .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+
+    const freightExpected = logisticHistory
+      .filter(l => l.orderId === order.orderId)
+      .reduce((sum, r) => sum + parseFloat(r.transporterAmount || 0), 0);
+    const freightPaid = paymentHistory
+      .filter(p => p.orderId === order.orderId && p.paymentType === 'Freight')
+      .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+
+    return {
+      rows,
+      totals: {
+        qty: rows.reduce((sum, r) => sum + r.qty, 0),
+        dispatchQty: rows.reduce((sum, r) => sum + r.dispatchQty, 0),
+        deliveredQty: rows.reduce((sum, r) => sum + r.deliveredQty, 0),
+        pendingQty: rows.reduce((sum, r) => sum + r.pendingQty, 0),
+        grandTotal: rows.reduce((sum, r) => sum + r.grandTotal, 0)
+      },
+      payment: { advanceRequired, advancePaid, vendorExpected, vendorPaid, freightExpected, freightPaid }
+    };
+  };
+
   const tableHeaders = [
     { label: "Order ID", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number",
     "GST Number", "Responsible Person Name", "Expected Delivery Date", "Delivery Address", "Transporting Type",
-    "Payment Terms", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount", "Remarks",
+    "Payment Terms", "Total Product", "Total Qty", "Delivered Qty", "Pending Delivery Qty", "Total PO Value", "Advance Payment", "Advance Amount", "Remarks",
     { label: "PO Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[80px]" }
   ];
 
@@ -370,6 +445,16 @@ export default function PurchaseOrder() {
           <td className="px-4 py-3 text-center text-[11px] text-gray-700 whitespace-nowrap">
             <span className="bg-indigo-50 font-bold rounded-lg px-2 py-1">{item.items?.length || 0}</span>
           </td>
+          {(() => {
+            const qtySummary = getOrderQtySummary(item);
+            return (
+              <>
+                <td className="px-4 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{qtySummary.totalQty}</td>
+                <td className="px-4 py-3 text-center text-[11px] font-bold text-emerald-600 whitespace-nowrap">{qtySummary.deliveredQty}</td>
+                <td className="px-4 py-3 text-center text-[11px] font-bold text-amber-600 whitespace-nowrap">{qtySummary.pendingQty}</td>
+              </>
+            );
+          })()}
           <td className="px-4 py-3 text-center text-[11px] text-emerald-600 font-bold whitespace-nowrap">₹{item.totalPOValue?.toFixed(2)}</td>
           <td className="px-4 py-3 text-center whitespace-nowrap">
             <span className={`px-2 py-0.5 rounded text-[9px] uppercase ${item.advancePayment === 'Yes' ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
@@ -396,51 +481,74 @@ export default function PurchaseOrder() {
             ) : <span className="text-gray-300">-</span>}
           </td>
         </tr>
-        {isExpanded && (
-          <tr>
-            <td colSpan={18} className="p-0 border-b border-indigo-50 bg-indigo-50/30">
-              <div className="sticky left-0 w-[90vw] md:w-[80vw] lg:w-[75vw] max-w-[1200px] p-4 pl-8 md:pl-12 animate-in slide-in-from-top-2 duration-200">
-                <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-indigo-50/50 border-b border-indigo-100 text-[10px] text-indigo-800 uppercase tracking-wider">
-                        <th className="px-4 py-3 font-bold text-center">Product Number</th>
-                        <th className="px-4 py-3 font-bold">Product Name</th>
-                        <th className="px-4 py-3 font-bold text-center">Qty</th>
-                        <th className="px-4 py-3 font-bold text-center">UOM</th>
-                        <th className="px-4 py-3 font-bold text-right">Price/Rate</th>
-                        <th className="px-4 py-3 font-bold text-right">Total Price</th>
-                        <th className="px-4 py-3 font-bold text-right">GST %</th>
-                        <th className="px-4 py-3 font-bold text-right">GST Value</th>
-                        <th className="px-4 py-3 font-bold text-right text-indigo-600">Grand Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {item.items?.map((prod, idx) => {
-                        const basic = (parseFloat(prod.qty) || 0) * (parseFloat(prod.priceRate) || 0);
-                        const gstPerc = parseFloat(prod.gstPercent || item.globalGstPercent || '0');
-                        const gstValue = basic * (gstPerc / 100);
-                        return (
-                          <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3 text-[11px] text-indigo-600 font-bold text-center">{`${item.orderId}-${String(idx + 1).padStart(2, '0')}`}</td>
-                            <td className="px-4 py-3 text-[11px] text-gray-800 font-medium">{prod.productName}</td>
-                            <td className="px-4 py-3 text-[11px] text-gray-700 text-center">{prod.qty}</td>
-                            <td className="px-4 py-3 text-[11px] text-gray-500 text-center"><span className="bg-gray-100 px-2 py-0.5 rounded">{prod.uom}</span></td>
-                            <td className="px-4 py-3 text-[11px] text-gray-700 text-right font-medium">₹{parseFloat(prod.priceRate || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3 text-[11px] text-gray-700 text-right font-medium">₹{basic.toFixed(2)}</td>
-                            <td className="px-4 py-3 text-[11px] text-gray-700 text-right">{gstPerc}%</td>
-                            <td className="px-4 py-3 text-[11px] text-gray-700 text-right font-medium">₹{gstValue.toFixed(2)}</td>
-                            <td className="px-4 py-3 text-[11px] text-indigo-600 text-right font-bold">₹{parseFloat(prod.totalValue || 0).toFixed(2)}</td>
+        {/* Complete cross-stage tracking, order number wise → item number wise, with totals */}
+        {isExpanded && (() => {
+          const { rows, totals, payment } = buildOrderLifecycle(item);
+          return (
+            <tr>
+              <td colSpan={21} className="p-0 border-b border-indigo-50 bg-indigo-50/30">
+                <div className="sticky left-0 w-[90vw] md:w-[80vw] lg:w-[75vw] max-w-[1300px] p-4 pl-8 md:pl-12 space-y-4 animate-in slide-in-from-top-2 duration-200">
+
+                  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[1400px]">
+                      <thead>
+                        <tr className="bg-indigo-50/50 border-b border-indigo-100 text-[10px] text-indigo-800 uppercase tracking-wider">
+                          <th className="px-3 py-3 font-bold text-center">Product Number</th>
+                          <th className="px-3 py-3 font-bold">Product Name</th>
+                          <th className="px-3 py-3 font-bold text-center">Total Qty</th>
+                          <th className="px-3 py-3 font-bold text-center">Dispatch Qty</th>
+                          <th className="px-3 py-3 font-bold text-center">Delivery Qty</th>
+                          <th className="px-3 py-3 font-bold text-center">Pending Delivered Qty</th>
+                          <th className="px-3 py-3 font-bold text-right text-indigo-600">Grand Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {rows.map((r) => (
+                          <tr key={r.productNumber} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-3 py-3 text-[11px] text-indigo-600 font-bold text-center whitespace-nowrap">{r.productNumber}</td>
+                            <td className="px-3 py-3 text-[11px] text-gray-800 font-medium whitespace-nowrap">{r.productName}</td>
+                            <td className="px-3 py-3 text-[11px] text-gray-700 text-center whitespace-nowrap">{r.qty} {r.uom}</td>
+                            <td className="px-3 py-3 text-[11px] text-emerald-600 font-bold text-center whitespace-nowrap">{r.dispatchQty || '-'}</td>
+                            <td className="px-3 py-3 text-[11px] text-emerald-700 font-bold text-center whitespace-nowrap">{r.deliveredQty || '-'}</td>
+                            <td className="px-3 py-3 text-[11px] text-amber-600 font-bold text-center whitespace-nowrap">{r.pendingQty}</td>
+                            <td className="px-3 py-3 text-[11px] text-indigo-600 text-right font-bold whitespace-nowrap">₹{r.grandTotal.toFixed(2)}</td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ))}
+                        <tr className="bg-indigo-50/40 border-t-2 border-indigo-100">
+                          <td colSpan={2} className="px-3 py-3 text-[11px] font-bold text-gray-700 text-right">TOTAL</td>
+                          <td className="px-3 py-3 text-[11px] font-bold text-gray-800 text-center">{totals.qty}</td>
+                          <td className="px-3 py-3 text-[11px] font-bold text-emerald-600 text-center">{totals.dispatchQty}</td>
+                          <td className="px-3 py-3 text-[11px] font-bold text-emerald-700 text-center">{totals.deliveredQty}</td>
+                          <td className="px-3 py-3 text-[11px] font-bold text-amber-600 text-center">{totals.pendingQty}</td>
+                          <td className="px-3 py-3 text-[11px] font-black text-indigo-700 text-right">₹{totals.grandTotal.toFixed(2)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                    <h4 className="text-[10px] uppercase font-bold text-gray-400 mb-3 tracking-wider">Payment Summary</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-[10px] text-gray-500 font-medium">Advance</p>
+                        <p className="text-sm font-bold text-gray-900">₹{payment.advancePaid.toFixed(2)} <span className="text-gray-400 font-normal">/ ₹{payment.advanceRequired.toFixed(2)}</span></p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 font-medium">Vendor Payment</p>
+                        <p className="text-sm font-bold text-gray-900">₹{payment.vendorPaid.toFixed(2)} <span className="text-gray-400 font-normal">/ ₹{payment.vendorExpected.toFixed(2)}</span></p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 font-medium">Freight</p>
+                        <p className="text-sm font-bold text-gray-900">₹{payment.freightPaid.toFixed(2)} <span className="text-gray-400 font-normal">/ ₹{payment.freightExpected.toFixed(2)}</span></p>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
-              </div>
-            </td>
-          </tr>
-        )}
+              </td>
+            </tr>
+          );
+        })()}
       </React.Fragment>
     );
   };

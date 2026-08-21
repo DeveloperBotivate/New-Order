@@ -14,11 +14,6 @@ export default function HistoryPackaging({ data, filters }) {
     return data.filter(item => {
       if (filters.division && item.division !== filters.division) return false;
       if (filters.partyName && item.partyName !== filters.partyName) return false;
-      if (filters.fromDate || filters.toDate) {
-        const d = item.poDate;
-        if (filters.fromDate && d < filters.fromDate) return false;
-        if (filters.toDate && d > filters.toDate) return false;
-      }
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase();
         return (

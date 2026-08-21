@@ -9,7 +9,17 @@ import toast from 'react-hot-toast';
 // localStorage never leaves this one browser, so this only helps within it.
 export const DATA_CHANGED_EVENT = 'o2d:data-changed';
 const notifyDataChanged = (key) => {
-  window.dispatchEvent(new CustomEvent(DATA_CHANGED_EVENT, { detail: { key } }));
+  // Deferred, not dispatched synchronously: window.dispatchEvent runs its
+  // listeners immediately and re-entrantly. A listener (e.g. the sidebar's
+  // refreshCounts) reads several storage collections, and reading one for the
+  // first time can itself trigger a one-time seed/migration `saveToStorage`
+  // call — which would call notifyDataChanged again and re-enter the same
+  // still-running listener synchronously, recursing until the call stack
+  // overflows. Deferring to the next tick breaks that chain while still
+  // refreshing effectively instantly.
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent(DATA_CHANGED_EVENT, { detail: { key } }));
+  }, 0);
 };
 
 const STORAGE_KEYS = {
@@ -1055,7 +1065,34 @@ export const getDeliveryHistory = () => {
     saveToStorage(STORAGE_KEYS.DELIVERY_HISTORY, history);
     saveToStorage('da_id_fix_migration', true);
   }
-  
+
+  // One-time repair: an earlier build stored a "No Stock" record's own `qty` as
+  // the production shortfall instead of the order line's original qty, with no
+  // separate field for the shortfall itself. Backfill `productionQty` from that
+  // stored value and restore `qty` to the order line's true original quantity
+  // (looked up from the order) so every record for a product reads the same
+  // Qty consistently, with Production Qty carrying the actual shortfall.
+  const hasProductionQtyFix = getFromStorage('dh_production_qty_fix_migration');
+  if (!hasProductionQtyFix && history.length > 0) {
+    const allOrders = getFromStorage(STORAGE_KEYS.RECEIVED_ORDERS) || [];
+    let repaired = false;
+    history.forEach(item => {
+      if (item.stockStatus === 'No Stock' && item.productionQty === undefined) {
+        const ord = allOrders.find(o => o.orderId === item.orderId);
+        const lineIdx = ord?.items?.findIndex((_, i) => `${ord.orderId}-${String(i + 1).padStart(2, '0')}` === item.productNumber) ?? -1;
+        const originalQty = lineIdx >= 0 ? parseFloat(ord.items[lineIdx].qty) || 0 : null;
+
+        item.productionQty = parseFloat(item.qty) || 0;
+        if (originalQty !== null && originalQty !== item.productionQty) {
+          item.qty = originalQty;
+        }
+        repaired = true;
+      }
+    });
+    if (repaired) saveToStorage(STORAGE_KEYS.DELIVERY_HISTORY, history);
+    saveToStorage('dh_production_qty_fix_migration', true);
+  }
+
   return history;
 };
 

@@ -109,17 +109,12 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
     // the shortfall, so that portion flows straight into Production Planning
     // in the same save — no separate action needed.
     //
-    // Production Planning has no separate "amount needed" field for a "No Stock"
-    // record — it reads that record's own `qty` as the amount to produce. So
-    // every "No Stock" record pushed here must carry the actual outstanding
-    // qty being routed to production, not the order line's full original qty
-    // (which would overstate it on a second/partial visit, or on a split where
-    // part already went to Dispatch).
-    const buildProductionValue = (qty, priceRate, gstPercent) => {
-      const basic = qty * (parseFloat(priceRate) || 0);
-      return basic + basic * ((parseFloat(gstPercent) || 0) / 100);
-    };
-
+    // `qty` always stays the order line's original total — the same value on
+    // every delivery record for this product, so it reads consistently
+    // wherever a product's history is listed. `productionQty` is the separate,
+    // explicit field carrying how much of THIS record actually needs producing
+    // (Production Planning reads it, falling back to `qty` for older records
+    // saved before this field existed).
     const deliveryItems = [];
     itemsToSave.forEach(({ _approvedQty, _pendingQty, ...item }) => {
       const context = {
@@ -133,17 +128,11 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
 
       if (item.stockStatus === 'No Stock') {
         // Whole remaining pending qty on this line needs producing.
-        deliveryItems.push({
-          ...item,
-          ...context,
-          qty: _pendingQty,
-          totalValue: buildProductionValue(_pendingQty, item.priceRate, item.gstPercent)
-        });
+        deliveryItems.push({ ...item, ...context, productionQty: _pendingQty });
         return;
       }
 
-      // In Stock — qty here stays the order line's original qty for context
-      // (Dispatch Planning uses Approve Qty, not Qty, as the dispatchable amount).
+      // In Stock
       deliveryItems.push({ ...item, ...context });
 
       const productionQty = Math.max(0, (_pendingQty || 0) - (parseFloat(item.approveQty) || 0));
@@ -151,10 +140,9 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
         deliveryItems.push({
           ...item,
           ...context,
-          qty: productionQty,
-          totalValue: buildProductionValue(productionQty, item.priceRate, item.gstPercent),
           stockStatus: 'No Stock',
           approveQty: '',
+          productionQty,
           batchNo: '',
           remarks: `Auto-routed to Production — shortfall of ${productionQty} ${item.uom || ''}`
         });

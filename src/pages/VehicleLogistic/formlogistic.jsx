@@ -1,14 +1,22 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, CheckCircle, Truck, UploadCloud } from 'lucide-react';
-import { saveLogisticTransaction, getPackagingHistory, getLogisticHistory, getTransporterAgencies } from '../../utils/storageManager';
-import { compressImageFile, validateAttachmentFile, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
+import { saveLogisticTransaction, getPackagingHistory, getLogisticHistory, getTransporterAgencies, saveTransporterAgency } from '../../utils/storageManager';
+import { compressImageFile, validateAttachmentFile, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB, generateId } from '../../utils/helpers';
+import SearchableDropdown from '../../components/SearchableDropdown';
 import toast from 'react-hot-toast';
 
-export default function Formlogistic({ order, onClose, onSuccess }) {
-  const [agencies] = useState(() => getTransporterAgencies() || []);
+// "Ex Factory Transpoter Office" means the shipment changes hands twice — once
+// out of the factory, again onward from the transporter's office — so it needs
+// two independent sets of vehicle/driver/transport details. Every other
+// Transporting Type keeps the existing single-leg flow exactly as it was.
+const TWO_LEG_TRANSPORT_TYPE = 'Ex Factory Transpoter Office';
 
-  // Common fields — apply to every selected product row in this save action
+export default function Formlogistic({ order, onClose, onSuccess }) {
+  const [agencies, setAgencies] = useState(() => getTransporterAgencies() || []);
+  const isTwoLeg = order.transportingType === TWO_LEG_TRANSPORT_TYPE;
+
+  // Leg 1 fields — apply to every selected product row in this save action
   const [transportAgency, setTransportAgency] = useState('');
   const [vehicleNo, setVehicleNo] = useState('');
   const [driverName, setDriverName] = useState('');
@@ -18,6 +26,12 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
   const [lrCopy, setLrCopy] = useState(null);
   const [biltyStatus, setBiltyStatus] = useState('Select');
   const [remarks, setRemarks] = useState('');
+
+  // Leg 2 fields — only collected/used when isTwoLeg
+  const [transportAgency2, setTransportAgency2] = useState('');
+  const [vehicleNo2, setVehicleNo2] = useState('');
+  const [driverName2, setDriverName2] = useState('');
+  const [driverMobile2, setDriverMobile2] = useState('');
 
   const [items, setItems] = useState(() => {
     // Get all packaged items for this order
@@ -35,6 +49,28 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
 
   const handleAgencyChange = (agencyName) => {
     setTransportAgency(agencyName);
+  };
+
+  // "Add New" on either leg's Transport Name dropdown: no popup — just drops the
+  // typed name into the field. Vehicle/Driver/Mobile are already collected right
+  // there in the form, so the new agency gets registered to master on Save.
+  const handleAddNewAgency = (typedName) => setTransportAgency(typedName || '');
+  const handleAddNewAgency2 = (typedName) => setTransportAgency2(typedName || '');
+
+  const registerAgencyIfNew = (name, vehicleNoVal, driverNameVal, mobileVal) => {
+    if (!name) return;
+    const existing = getTransporterAgencies();
+    if (existing.some(a => a.name === name)) return;
+    const newAgency = {
+      id: generateId(),
+      timestamp: new Date().toISOString(),
+      taNo: `TA-${String(existing.length + 1).padStart(3, '0')}`,
+      name,
+      vehicleNo: vehicleNoVal,
+      driverName: driverNameVal,
+      mobile: mobileVal
+    };
+    saveTransporterAgency(newAgency);
   };
 
   const handleItemChange = (index, field, value) => {
@@ -73,7 +109,7 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
       return toast.error('Please select at least one item');
     }
     if (!transportAgency) {
-      return toast.error('Please select Transport Name');
+      return toast.error(isTwoLeg ? 'Please select Transport Name for Logistic Detail 1' : 'Please select Transport Name');
     }
     if (biltyStatus === 'Select') {
       return toast.error('Please select Bilty Status');
@@ -81,6 +117,14 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
     if (biltyStatus === 'Yes' && !lrNumber.trim()) {
       return toast.error('Please enter Bilty Number');
     }
+    if (isTwoLeg && !transportAgency2) {
+      return toast.error('Please select Transport Name for Logistic Detail 2');
+    }
+
+    // Register any newly-typed transport name(s) into Transporter Agency master
+    registerAgencyIfNew(transportAgency, vehicleNo, driverName, driverMobile);
+    if (isTwoLeg) registerAgencyIfNew(transportAgency2, vehicleNo2, driverName2, driverMobile2);
+    setAgencies(getTransporterAgencies());
 
     const itemsToSave = selectedItems.map(item => ({
       ...item,
@@ -92,7 +136,13 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
       transporterAmount: biltyStatus === 'Yes' ? transporterAmount : '',
       lrCopy: biltyStatus === 'Yes' ? lrCopy : null,
       biltyStatus,
-      logisticRemarks: remarks
+      logisticRemarks: remarks,
+      ...(isTwoLeg ? {
+        transportAgency2,
+        vehicleNo2,
+        driverName2,
+        driverMobile2
+      } : {})
     }));
 
     saveLogisticTransaction(itemsToSave);
@@ -256,23 +306,23 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
 
           {/* Logistic Inputs — common to all selected product rows */}
           <div>
-            <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Logistic Details</h3>
+            <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">
+              {isTwoLeg ? 'Logistic Detail 1' : 'Logistic Details'}
+            </h3>
             <div className="space-y-3 bg-white p-4 rounded-xl border border-gray-200">
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Transport Name */}
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Transport Name <span className="text-red-500">*</span></label>
-                  <select
+                  <SearchableDropdown
+                    options={agencies.map(a => ({ value: a.name, label: a.name }))}
                     value={transportAgency}
-                    onChange={(e) => handleAgencyChange(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
-                  >
-                    <option value="">Select Transport</option>
-                    {agencies.map(agency => (
-                      <option key={agency.id} value={agency.name}>{agency.name}</option>
-                    ))}
-                  </select>
+                    onChange={handleAgencyChange}
+                    onAdd={handleAddNewAgency}
+                    placeholder="Select Transport"
+                    className="h-[38px] text-sm"
+                  />
                 </div>
 
                 {/* Vehicle Plate Number */}
@@ -388,6 +438,65 @@ export default function Formlogistic({ order, onClose, onSuccess }) {
               </div>
             </div>
           </div>
+
+          {/* Logistic Detail 2 — second leg, only for Ex Factory Transpoter Office */}
+          {isTwoLeg && (
+            <div>
+              <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Logistic Detail 2</h3>
+              <div className="space-y-3 bg-white p-4 rounded-xl border border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Transport Name */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Transport Name <span className="text-red-500">*</span></label>
+                    <SearchableDropdown
+                      options={agencies.map(a => ({ value: a.name, label: a.name }))}
+                      value={transportAgency2}
+                      onChange={setTransportAgency2}
+                      onAdd={handleAddNewAgency2}
+                      placeholder="Select Transport"
+                      className="h-[38px] text-sm"
+                    />
+                  </div>
+
+                  {/* Vehicle Plate Number */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Vehicle Plate Number</label>
+                    <input
+                      type="text"
+                      value={vehicleNo2}
+                      onChange={(e) => setVehicleNo2(e.target.value)}
+                      placeholder="e.g. MH-12-AB-1234"
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
+                    />
+                  </div>
+
+                  {/* Driver Full Name */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Driver Full Name</label>
+                    <input
+                      type="text"
+                      value={driverName2}
+                      onChange={(e) => setDriverName2(e.target.value)}
+                      placeholder="Driver Name"
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
+                    />
+                  </div>
+
+                  {/* Driver Mobile Contact */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Driver Mobile Contact</label>
+                    <input
+                      type="text"
+                      value={driverMobile2}
+                      onChange={(e) => setDriverMobile2(e.target.value)}
+                      placeholder="Mobile Number"
+                      className="w-full bg-gray-50 border border-gray-300 text-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Remarks — outside the items table */}
           <div>

@@ -1,24 +1,22 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, ChevronUp, X, FileImage } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, FileImage, Eye } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import { getLogisticHistory } from '../../utils/storageManager';
 import { isPdfDataUrl } from '../../utils/helpers';
+
+const TWO_LEG_TRANSPORT_TYPE = 'Ex Factory Transpoter Office';
 
 export default function Historylogistic({ data, filters }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [viewImage, setViewImage] = useState(null);
+  const [viewLogistic, setViewLogistic] = useState(null);
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
       if (filters.division && item.division !== filters.division) return false;
       if (filters.partyName && item.partyName !== filters.partyName) return false;
-      if (filters.fromDate || filters.toDate) {
-        const d = item.poDate;
-        if (filters.fromDate && d < filters.fromDate) return false;
-        if (filters.toDate && d > filters.toDate) return false;
-      }
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase();
         return (
@@ -43,6 +41,11 @@ export default function Historylogistic({ data, filters }) {
     if (imgUrl) setViewImage(imgUrl);
   };
 
+  const handleViewLogistic = (order, latest, e) => {
+    e.stopPropagation();
+    setViewLogistic({ order, latest });
+  };
+
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
@@ -51,7 +54,7 @@ export default function Historylogistic({ data, filters }) {
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number", "GST Number", "Responsible Person Name",
     "Expected Delivery Date", "Transporting Type", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount",
     "Transport Name", "Vehicle Plate Number", "Driver Full Name", "Driver Mobile Contact", "Bilty Status", "Bilty Number",
-    "Transporter Amount",
+    "Transporter Amount", "Logistic Details",
     { label: "Bilty Copy", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[80px]" }
   ];
 
@@ -123,6 +126,12 @@ export default function Historylogistic({ data, filters }) {
           <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{biltyStatus}</td>
           <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-800 whitespace-nowrap">{biltyStatus === 'Yes' ? lrNumber : '-'}</td>
           <td className="px-3 py-3 text-center text-[11px] font-medium text-emerald-600 whitespace-nowrap">{biltyStatus === 'Yes' && transporterAmount ? `₹${transporterAmount}` : '-'}</td>
+
+          <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+            <button onClick={(e) => handleViewLogistic(order, latest, e)} className="text-indigo-600 hover:text-indigo-800 flex items-center justify-center gap-1 mx-auto text-[11px] font-bold">
+              <Eye size={14} /> View
+            </button>
+          </td>
 
           <td className="px-3 py-3 text-center whitespace-nowrap sticky right-0 z-10 shadow-[-1px_0_0_0_#e5e7eb] transition-colors bg-white group-hover:bg-slate-50" onClick={(e) => e.stopPropagation()}>
             {biltyStatus === 'Yes' && lrCopy ? (
@@ -226,6 +235,119 @@ export default function Historylogistic({ data, filters }) {
           </div>
         </div>
       )}
+
+      {/* Logistic Details Modal — full form input, both legs for a two-leg order */}
+      {viewLogistic && (() => {
+        const { order, latest } = viewLogistic;
+        const isTwoLeg = order.transportingType === TWO_LEG_TRANSPORT_TYPE;
+        return (
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-[110] p-4" onClick={() => setViewLogistic(null)}>
+            <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50 shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 leading-tight">Logistic Details</h2>
+                  <p className="text-xs text-gray-500 font-medium mt-0.5">Order: {order.orderId}</p>
+                </div>
+                <button onClick={() => setViewLogistic(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div>
+                  <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">
+                    {isTwoLeg ? 'Logistic Detail 1' : 'Logistic Details'}
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-gray-100">
+                    <div>
+                      <p className="text-[10px] text-gray-500 font-medium">Transport Name</p>
+                      <p className="text-sm font-bold text-gray-900">{latest.transportAgency || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-500 font-medium">Vehicle Plate Number</p>
+                      <p className="text-sm font-bold text-gray-900">{latest.vehicleNo || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-500 font-medium">Driver Full Name</p>
+                      <p className="text-sm font-bold text-gray-900">{latest.driverName || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-500 font-medium">Driver Mobile Contact</p>
+                      <p className="text-sm font-bold text-gray-900">{latest.driverMobile || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-500 font-medium">Bilty Status</p>
+                      <p className="text-sm font-bold text-gray-900">{latest.biltyStatus || '-'}</p>
+                    </div>
+                    {latest.biltyStatus === 'Yes' && (
+                      <>
+                        <div>
+                          <p className="text-[10px] text-gray-500 font-medium">Bilty Number</p>
+                          <p className="text-sm font-bold text-gray-900">{latest.lrNumber || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 font-medium">Transporter Amount</p>
+                          <p className="text-sm font-bold text-emerald-600">{latest.transporterAmount ? `₹${latest.transporterAmount}` : '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 font-medium">Bilty Copy</p>
+                          {latest.lrCopy ? (
+                            <button onClick={(e) => handleImageView(latest.lrCopy, e)} className="text-indigo-600 hover:text-indigo-800 text-sm font-bold flex items-center gap-1">
+                              <FileImage size={14} /> View
+                            </button>
+                          ) : (
+                            <p className="text-sm text-gray-400">-</p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {isTwoLeg && (
+                  <div>
+                    <h3 className="text-[10px] uppercase font-bold text-indigo-600 mb-3 tracking-wider bg-indigo-50 inline-block px-2 py-1 rounded">Logistic Detail 2</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-gray-100">
+                      <div>
+                        <p className="text-[10px] text-gray-500 font-medium">Transport Name</p>
+                        <p className="text-sm font-bold text-gray-900">{latest.transportAgency2 || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 font-medium">Vehicle Plate Number</p>
+                        <p className="text-sm font-bold text-gray-900">{latest.vehicleNo2 || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 font-medium">Driver Full Name</p>
+                        <p className="text-sm font-bold text-gray-900">{latest.driverName2 || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 font-medium">Driver Mobile Contact</p>
+                        <p className="text-sm font-bold text-gray-900">{latest.driverMobile2 || '-'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {latest.logisticRemarks && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider mb-1">Remarks</p>
+                    <p className="text-sm text-gray-700 bg-slate-50 p-3 rounded-lg border border-gray-100">{latest.logisticRemarks}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-gray-100 bg-gray-50 shrink-0 flex justify-end">
+                <button
+                  onClick={() => setViewLogistic(null)}
+                  className="px-6 py-2 rounded-lg font-bold text-sm text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
