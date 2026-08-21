@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MapPin, Edit, Trash2, Plus, Minus } from 'lucide-react';
+import { MapPin, Edit, Trash2 } from 'lucide-react';
 import { getVendors, saveVendors, saveVendor } from '../../utils/storageManager';
 import { generateId } from '../../utils/helpers';
 import DataTable from '../../components/DataTable';
 import ModalAlert from '../../components/ModalAlert';
 import ModalForm from '../../components/ModalForm';
-import InfoPopover from '../../components/InfoPopover';
 
 export default function PartyMaster({ searchQuery, triggerAdd }) {
   const [parties, setParties] = useState([]);

@@ -84,8 +84,8 @@ export default function ReceivedOrder() {
 
   const tableHeaders = [
     "", "Order ID", "Division", "PO-Number", "PO Date", "Party Name", "Party Number",
-    "GST Number", "Responsible Person Name", "Expected Delivery Date", "Transporting Type", 
-    "GST%", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount", 
+    "GST Number", "Responsible Person Name", "Expected Delivery Date", "Delivery Address", "Transporting Type",
+    "Payment Terms", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount",
     "Remarks", "PO Image"
   ];
 
@@ -111,8 +111,13 @@ export default function ReceivedOrder() {
           <td className="px-4 py-3 text-center text-[11px] text-gray-500 whitespace-nowrap">{item.gstNumber || '-'}</td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-500 whitespace-nowrap">{item.responsiblePerson || '-'}</td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{item.expectedDeliveryDate}</td>
+          <td className="px-4 py-3 text-left text-[11px] text-gray-600 max-w-[200px] truncate" title={item.deliveryAddress}>{item.deliveryAddress || '-'}</td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{item.transportingType || '-'}</td>
-          <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{item.globalGstPercent || '0'}%</td>
+          <td className="px-4 py-3 text-center whitespace-nowrap">
+            {item.paymentTerm ? (
+              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded border border-indigo-100 uppercase">{item.paymentTerm}</span>
+            ) : <span className="text-gray-300 text-[11px]">-</span>}
+          </td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-700 whitespace-nowrap bg-indigo-50/50 font-bold rounded-lg my-1 block mx-2">
             {item.items?.length || 0}
           </td>
@@ -144,7 +149,7 @@ export default function ReceivedOrder() {
         </tr>
         {isExpanded && (
           <tr>
-            <td colSpan={17} className="p-0 border-b border-gray-200">
+            <td colSpan={18} className="p-0 border-b border-gray-200">
               <div className="bg-slate-50/50 p-4 border-l-4 border-indigo-500 shadow-inner animate-in slide-in-from-top-2 duration-200">
                 <h4 className="text-xs font-bold text-gray-700 uppercase tracking-widest mb-3">Product Details</h4>
                 <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -220,7 +225,21 @@ export default function ReceivedOrder() {
               <span className="text-indigo-600 font-bold">{item.items?.length || 0} Items</span>
             </div>
           </div>
-          
+
+          {item.deliveryAddress && (
+            <div className="text-[10px]">
+              <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Delivery Address</p>
+              <p className="text-gray-700 truncate">{item.deliveryAddress}</p>
+            </div>
+          )}
+
+          {item.paymentTerm && (
+            <div className="text-[10px]">
+              <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Payment Terms</p>
+              <span className="inline-block mt-0.5 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[9px] font-bold rounded border border-indigo-100 uppercase">{item.paymentTerm}</span>
+            </div>
+          )}
+
           <div className="flex justify-center pt-1 border-t border-gray-50">
              <span className="text-[10px] text-gray-400 flex items-center gap-1">
                {isExpanded ? <><ChevronUp size={12}/> Hide Products</> : <><ChevronDown size={12}/> View Products</>}

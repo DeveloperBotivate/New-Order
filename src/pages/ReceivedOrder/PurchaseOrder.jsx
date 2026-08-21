@@ -6,8 +6,8 @@ import {
   Upload, ChevronDown, ChevronUp, FileText, Info, Boxes
 } from 'lucide-react';
 import {
-  getDivisions, getVendors, getTransportingTypes, getMasterItems, getUOMs,
-  getReceivedOrders, saveReceivedOrder, getPersons, getIMSStock
+  getDivisions, getVendors, saveVendor, getTransportingTypes, getMasterItems, getUOMs,
+  getReceivedOrders, saveReceivedOrder, getPersons, getIMSStock, getConfirmDeliveryHistory
 } from '../../utils/storageManager';
 import { generateId, compressImageFile, validateAttachmentFile, isPdfDataUrl, ATTACHMENT_ACCEPT, MAX_ATTACHMENT_SIZE_MB } from '../../utils/helpers';
 import ModalForm from '../../components/ModalForm';
@@ -15,11 +15,16 @@ import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import ModalAlert from '../../components/ModalAlert';
 import InfoPopover from '../../components/InfoPopover';
+import { TabSwitcher } from '../../components/StandardButtons';
+
+const PAYMENT_TERM_PRESETS = ['30 Days', '60 Days', '90 Days'];
 
 export default function PurchaseOrder() {
+  const [activeTab, setActiveTab] = useState('pending');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [paymentTermMode, setPaymentTermMode] = useState('preset');
 
   const [alertConfig, setAlertConfig] = useState({
     isOpen: false, type: 'success', title: '', message: ''
@@ -33,6 +38,7 @@ export default function PurchaseOrder() {
   const [uoms, setUoms] = useState([]);
   const [users, setUsers] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [confirmDeliveryHistory, setConfirmDeliveryHistory] = useState([]);
 
   // Table interaction state
   const [expandedRows, setExpandedRows] = useState(new Set());
@@ -44,6 +50,7 @@ export default function PurchaseOrder() {
     qty: '',
     uom: '',
     priceRate: '',
+    gstPercent: '0',
     totalValue: 0
   };
 
@@ -56,8 +63,9 @@ export default function PurchaseOrder() {
     gstNumber: '',
     responsiblePerson: '',
     expectedDeliveryDate: '',
+    deliveryAddress: '',
     transportingType: '',
-    globalGstPercent: '0',
+    paymentTerm: '',
     items: [{ ...initialItem }],
     advancePayment: 'No',
     advanceAmount: '',
@@ -77,9 +85,16 @@ export default function PurchaseOrder() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
 
+  const loadOrders = () => {
+    setOrders(getReceivedOrders());
+    setConfirmDeliveryHistory(getConfirmDeliveryHistory());
+  };
+
   useEffect(() => {
     refreshMasterData();
-    setOrders(getReceivedOrders());
+    loadOrders();
+    const interval = setInterval(loadOrders, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const refreshMasterData = () => {
@@ -105,20 +120,28 @@ export default function PurchaseOrder() {
         partyName: party.name,
         partyNumber: party.phone || '',
         gstNumber: party.gst || '',
-        responsiblePerson: party.responsiblePerson || ''
+        responsiblePerson: party.responsiblePerson || '',
+        deliveryAddress: party.address || ''
       }));
     } else {
       setFormData(prev => ({
         ...prev,
-        partyName, partyNumber: '', gstNumber: '', responsiblePerson: ''
+        partyName, partyNumber: '', gstNumber: '', responsiblePerson: '', deliveryAddress: ''
       }));
     }
   };
 
-  const calculateItemTotal = (item, gstVal) => {
+  // "Add New" on the Party Name dropdown: no popup — just drop the typed name
+  // straight into the field so the user fills GST/Contact/Address inline below,
+  // like any other party. The new party itself gets saved to Party Master on submit.
+  const handleAddNewParty = (typedName) => {
+    handlePartyChange(typedName || '');
+  };
+
+  const calculateItemTotal = (item) => {
     const qty = parseFloat(item.qty) || 0;
     const rate = parseFloat(item.priceRate) || 0;
-    const gst = parseFloat(gstVal !== undefined ? gstVal : formData.globalGstPercent) || 0;
+    const gst = parseFloat(item.gstPercent) || 0;
     const basic = qty * rate;
     const gstAmount = basic * (gst / 100);
     return basic + gstAmount;
@@ -135,21 +158,12 @@ export default function PurchaseOrder() {
       // Intentionally not prefilling priceRate as requested
     }
 
-    if (['productName', 'qty', 'priceRate'].includes(field)) {
+    if (['productName', 'qty', 'priceRate', 'gstPercent'].includes(field)) {
       item.totalValue = calculateItemTotal(item);
     }
 
     newItems[index] = item;
     setFormData({ ...formData, items: newItems });
-  };
-
-  const handleGlobalGstChange = (e) => {
-    const newGst = e.target.value;
-    const newItems = formData.items.map(item => ({
-      ...item,
-      totalValue: calculateItemTotal(item, newGst)
-    }));
-    setFormData({ ...formData, globalGstPercent: newGst, items: newItems });
   };
 
   const handleAddItem = () => {
@@ -180,6 +194,7 @@ export default function PurchaseOrder() {
     if (!formData.division) return toast.error('Division is required');
     if (!formData.partyName) return toast.error('Party Name is required');
     if (!formData.poNumber) return toast.error('PO Number is required');
+    if (!formData.deliveryAddress) return toast.error('Delivery Address is required');
 
     // Validate items
     for (let i = 0; i < formData.items.length; i++) {
@@ -190,6 +205,30 @@ export default function PurchaseOrder() {
     }
 
     setLoading(true);
+
+    // If the typed Party Name isn't an existing party, register it in Party Master
+    // right now using whatever GST/Contact/Address was filled in on this form —
+    // no separate popup needed.
+    const isNewParty = !parties.some(p => p.name === formData.partyName);
+    if (isNewParty) {
+      const allVendors = getVendors();
+      const newParty = {
+        id: generateId(),
+        timestamp: new Date().toISOString(),
+        vnNo: `VN-${String(allVendors.length + 1).padStart(3, '0')}`,
+        name: formData.partyName,
+        gst: formData.gstNumber || '',
+        email: '',
+        phone: formData.partyNumber || '',
+        address: formData.deliveryAddress || '',
+        locationLink: '',
+        responsiblePerson: formData.responsiblePerson || ''
+      };
+      saveVendor(newParty);
+      setParties(getVendors());
+      toast.success(`New party "${newParty.name}" added to Party Master.`);
+    }
+
     const allOrders = getReceivedOrders();
     const nextSn = allOrders.length + 1;
     const orderId = `OR-${String(nextSn).padStart(3, '0')}`;
@@ -218,10 +257,11 @@ export default function PurchaseOrder() {
     setFormData({
       division: '', poNumber: '', poDate: new Date().toISOString().split('T')[0],
       partyName: '', partyNumber: '', gstNumber: '', responsiblePerson: '',
-      expectedDeliveryDate: '', transportingType: '',
+      expectedDeliveryDate: '', deliveryAddress: '', transportingType: '', paymentTerm: '',
       items: [{ ...initialItem }],
       advancePayment: 'No', advanceAmount: '', orderReceivedBy: '', poImage: '', remarks: ''
     });
+    setPaymentTermMode('preset');
 
     setShowFormModal(false);
     setLoading(false);
@@ -243,8 +283,26 @@ export default function PurchaseOrder() {
     setShowImageModal(true);
   };
 
+  // An order is "delivered" once Confirm Delivery has marked it Delivered.
+  const deliveredOrderIds = useMemo(() => {
+    return new Set(
+      confirmDeliveryHistory.filter(ch => ch.deliveryStatus === 'Delivered').map(ch => ch.orderId)
+    );
+  }, [confirmDeliveryHistory]);
+
+  const pendingOrders = useMemo(
+    () => orders.filter(o => !deliveredOrderIds.has(o.orderId)),
+    [orders, deliveredOrderIds]
+  );
+
+  const historyOrders = useMemo(
+    () => orders.filter(o => deliveredOrderIds.has(o.orderId)),
+    [orders, deliveredOrderIds]
+  );
+
   const filteredOrders = useMemo(() => {
-    return orders.filter(item => {
+    const baseList = activeTab === 'history' ? historyOrders : pendingOrders;
+    return baseList.filter(item => {
       if (filters.division && item.division !== filters.division) return false;
       if (filters.partyName && item.partyName !== filters.partyName) return false;
 
@@ -265,7 +323,7 @@ export default function PurchaseOrder() {
       }
       return true;
     }).reverse();
-  }, [orders, filters]);
+  }, [activeTab, pendingOrders, historyOrders, filters]);
 
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -273,8 +331,8 @@ export default function PurchaseOrder() {
   const tableHeaders = [
     { label: "Order ID", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     "Division", "PO-Number", "PO Date", "Party Name", "Party Number",
-    "GST Number", "Responsible Person Name", "Expected Delivery Date", "Transporting Type",
-    "GST%", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount", "Remarks", 
+    "GST Number", "Responsible Person Name", "Expected Delivery Date", "Delivery Address", "Transporting Type",
+    "Payment Terms", "Total Product", "Total PO Value", "Advance Payment", "Advance Amount", "Remarks",
     { label: "PO Image", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[80px]" }
   ];
 
@@ -302,8 +360,13 @@ export default function PurchaseOrder() {
           <td className="px-4 py-3 text-center text-[11px] text-gray-500 whitespace-nowrap">{item.gstNumber || '-'}</td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-500 whitespace-nowrap">{item.responsiblePerson || '-'}</td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{item.expectedDeliveryDate}</td>
+          <td className="px-4 py-3 text-left text-[11px] text-gray-600 max-w-[200px] truncate" title={item.deliveryAddress}>{item.deliveryAddress || '-'}</td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{item.transportingType || '-'}</td>
-          <td className="px-4 py-3 text-center text-[11px] text-gray-600 whitespace-nowrap">{item.globalGstPercent || '0'}%</td>
+          <td className="px-4 py-3 text-center whitespace-nowrap">
+            {item.paymentTerm ? (
+              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded border border-indigo-100 uppercase">{item.paymentTerm}</span>
+            ) : <span className="text-gray-300 text-[11px]">-</span>}
+          </td>
           <td className="px-4 py-3 text-center text-[11px] text-gray-700 whitespace-nowrap">
             <span className="bg-indigo-50 font-bold rounded-lg px-2 py-1">{item.items?.length || 0}</span>
           </td>
@@ -335,7 +398,7 @@ export default function PurchaseOrder() {
         </tr>
         {isExpanded && (
           <tr>
-            <td colSpan={17} className="p-0 border-b border-indigo-50 bg-indigo-50/30">
+            <td colSpan={18} className="p-0 border-b border-indigo-50 bg-indigo-50/30">
               <div className="sticky left-0 w-[90vw] md:w-[80vw] lg:w-[75vw] max-w-[1200px] p-4 pl-8 md:pl-12 animate-in slide-in-from-top-2 duration-200">
                 <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
                   <table className="w-full text-left border-collapse">
@@ -411,6 +474,20 @@ export default function PurchaseOrder() {
             </div>
           </div>
 
+          {item.deliveryAddress && (
+            <div className="text-[10px]">
+              <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Delivery Address</p>
+              <p className="text-gray-700 truncate">{item.deliveryAddress}</p>
+            </div>
+          )}
+
+          {item.paymentTerm && (
+            <div className="text-[10px]">
+              <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Payment Terms</p>
+              <span className="inline-block mt-0.5 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[9px] font-bold rounded border border-indigo-100 uppercase">{item.paymentTerm}</span>
+            </div>
+          )}
+
           <div className="flex justify-center pt-1 border-t border-gray-50">
              <span className="text-[10px] text-gray-400 flex items-center gap-1">
                {isExpanded ? <><ChevronUp size={12}/> Hide Products</> : <><ChevronDown size={12}/> View Products</>}
@@ -450,6 +527,14 @@ export default function PurchaseOrder() {
     <div className="p-0 sm:p-2 md:p-6 space-y-2 md:space-y-6 flex flex-col h-full min-h-0">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 lg:gap-4 w-full px-2 sm:px-0">
         <div className="flex flex-col lg:flex-row w-full gap-2 lg:gap-3 items-center">
+          <TabSwitcher
+            activeTab={activeTab}
+            onTabChange={(tab) => { setActiveTab(tab); setCurrentPage(1); }}
+            tabs={[
+              { id: 'pending', label: 'Pending', count: pendingOrders.length },
+              { id: 'history', label: 'History', count: historyOrders.length }
+            ]}
+          />
           <div className="flex items-center gap-2 w-full lg:w-auto lg:flex-[1.5]">
             <div className="flex-1 w-full relative">
               <Search className="absolute left-2.5 top-[9px] lg:top-[11px] text-gray-400" size={14} />
@@ -534,20 +619,25 @@ export default function PurchaseOrder() {
 
             <div className="space-y-1">
               <label className="block text-sm font-medium text-slate-700 mb-1">Party Name <span className="text-blue-500">*</span></label>
-              <SearchableDropdown options={parties.map(p => ({ value: p.name, label: p.name }))} value={formData.partyName} onChange={handlePartyChange} placeholder="e.g. Acme Industries" className="h-[38px] text-sm" />
+              <SearchableDropdown options={parties.map(p => ({ value: p.name, label: p.name }))} value={formData.partyName} onChange={handlePartyChange} onAdd={handleAddNewParty} placeholder="e.g. Acme Industries" className="h-[38px] text-sm" />
             </div>
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Party Number</label>
-              <input type="text" value={formData.partyNumber} readOnly className="w-full border border-gray-200 bg-slate-50 rounded-md px-3 py-2 text-sm text-slate-500 focus:outline-none" placeholder="Auto-filled" />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Contact No.</label>
+              <input type="text" value={formData.partyNumber} onChange={(e) => setFormData({ ...formData, partyNumber: e.target.value })} className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Auto-filled, editable" />
             </div>
 
             <div className="space-y-1">
               <label className="block text-sm font-medium text-slate-700 mb-1">GST Number</label>
-              <input type="text" value={formData.gstNumber} readOnly className="w-full border border-gray-200 bg-slate-50 rounded-md px-3 py-2 text-sm text-slate-500 focus:outline-none" placeholder="Auto-filled" />
+              <input type="text" value={formData.gstNumber} onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value })} className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Auto-filled, editable" />
             </div>
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Responsible Person</label>
-              <input type="text" value={formData.responsiblePerson} readOnly className="w-full border border-gray-200 bg-slate-50 rounded-md px-3 py-2 text-sm text-slate-500 focus:outline-none" placeholder="Auto-filled" />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Contact Person</label>
+              <input type="text" value={formData.responsiblePerson} onChange={(e) => setFormData({ ...formData, responsiblePerson: e.target.value })} className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Auto-filled, editable" />
+            </div>
+
+            <div className="space-y-1 md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Delivery Address <span className="text-blue-500">*</span></label>
+              <textarea value={formData.deliveryAddress} onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })} className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 h-[38px] resize-none" placeholder="Auto-filled from party, editable" required />
             </div>
 
             <div className="space-y-1">
@@ -558,20 +648,35 @@ export default function PurchaseOrder() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Order Received By</label>
               <SearchableDropdown options={users.map(u => ({ value: u.name, label: u.name }))} value={formData.orderReceivedBy} onChange={(val) => setFormData({ ...formData, orderReceivedBy: val })} placeholder="Select Receiver" className="h-[38px] text-sm" />
             </div>
-            
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">GST (%)</label>
-              <select 
-                value={formData.globalGstPercent} 
-                onChange={handleGlobalGstChange} 
+              <label className="block text-sm font-medium text-slate-700 mb-1">Payment Terms</label>
+              <select
+                value={paymentTermMode === 'custom' ? 'Custom' : formData.paymentTerm}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'Custom') {
+                    setPaymentTermMode('custom');
+                    setFormData({ ...formData, paymentTerm: '' });
+                  } else {
+                    setPaymentTermMode('preset');
+                    setFormData({ ...formData, paymentTerm: val });
+                  }
+                }}
                 className="w-full border border-gray-200 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 h-[38px]"
               >
-                <option value="0">0%</option>
-                <option value="5">5%</option>
-                <option value="12">12%</option>
-                <option value="18">18%</option>
-                <option value="28">28%</option>
+                <option value="">Select Term</option>
+                {PAYMENT_TERM_PRESETS.map(term => <option key={term} value={term}>{term}</option>)}
+                <option value="Custom">Custom (Enter Manually)</option>
               </select>
+              {paymentTermMode === 'custom' && (
+                <input
+                  type="text"
+                  value={formData.paymentTerm}
+                  onChange={(e) => setFormData({ ...formData, paymentTerm: e.target.value })}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm mt-1.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  placeholder="Enter custom payment term"
+                />
+              )}
             </div>
           </div>
 
@@ -594,7 +699,7 @@ export default function PurchaseOrder() {
                       <Trash2 size={12} />
                     </button>
                   )}
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                     <div className="space-y-1 md:col-span-2">
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-sm font-medium text-slate-700">Product Name <span className="text-blue-500">*</span></label>
@@ -622,12 +727,22 @@ export default function PurchaseOrder() {
                       <label className="block text-sm font-medium text-slate-700 mb-1">Price/Rate (₹) <span className="text-blue-500">*</span></label>
                       <input type="number" value={item.priceRate} onChange={(e) => handleItemChange(index, 'priceRate', e.target.value)} className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="0.00" />
                     </div>
+                    <div className="space-y-1">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">GST (%)</label>
+                      <select value={item.gstPercent} onChange={(e) => handleItemChange(index, 'gstPercent', e.target.value)} className="w-full border border-gray-200 bg-white rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 h-[38px]">
+                        <option value="0">0%</option>
+                        <option value="5">5%</option>
+                        <option value="12">12%</option>
+                        <option value="18">18%</option>
+                        <option value="28">28%</option>
+                      </select>
+                    </div>
                   </div>
                   <div className="flex justify-end items-center mt-1 text-sm">
                     <span className="text-slate-500 mr-2">Total:</span>
                     <span className="text-slate-600 mr-2">
-                      ₹{((parseFloat(item.qty) || 0) * (parseFloat(item.priceRate) || 0)).toFixed(2)} + 
-                      ₹{(((parseFloat(item.qty) || 0) * (parseFloat(item.priceRate) || 0)) * ((parseFloat(formData.globalGstPercent) || 0) / 100)).toFixed(2)} (GST) = 
+                      ₹{((parseFloat(item.qty) || 0) * (parseFloat(item.priceRate) || 0)).toFixed(2)} +
+                      ₹{(((parseFloat(item.qty) || 0) * (parseFloat(item.priceRate) || 0)) * ((parseFloat(item.gstPercent) || 0) / 100)).toFixed(2)} (GST {item.gstPercent || 0}%) =
                     </span>
                     <span className="font-bold text-slate-800">₹{item.totalValue.toFixed(2)}</span>
                   </div>
@@ -647,7 +762,7 @@ export default function PurchaseOrder() {
                 <span className="text-sm font-bold text-slate-800">
                   ₹{formData.items.reduce((sum, item) => {
                     const basic = (parseFloat(item.qty) || 0) * (parseFloat(item.priceRate) || 0);
-                    return sum + (basic * ((parseFloat(formData.globalGstPercent) || 0) / 100));
+                    return sum + (basic * ((parseFloat(item.gstPercent) || 0) / 100));
                   }, 0).toFixed(2)}
                 </span>
               </div>
@@ -705,7 +820,7 @@ export default function PurchaseOrder() {
         </div>
       </ModalForm>
 
-      {orders.length === 0 ? (
+      {orders.length === 0 && activeTab === 'pending' ? (
         <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 border-dashed shadow-sm flex flex-col items-center justify-center p-10 text-center">
           <div className="w-16 h-16 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-4">
             <PackagePlus size={32} />

@@ -28,6 +28,7 @@ const STORAGE_KEYS = {
   DIVISIONS: 'pcb_divisions_v1',
   PERSONS: 'pcb_persons_v1',
   TRANSPORTING_TYPES: 'pcb_transporting_types_v1',
+  PAYMENT_TERMS_MASTER: 'pcb_payment_terms_master_v1',
   TRANSPORTER_AGENCIES: 'pcb_transporter_agencies_v1',
   PURCHASE_ORDERS: 'pcb_purchase_orders_v1',
   RECEIVED_ORDERS: 'pcb_received_orders_v1',
@@ -903,6 +904,33 @@ export const saveTransportingType = (item) => {
   const data = getTransportingTypes();
   data.push(item);
   saveTransportingTypes(data);
+};
+
+// Payment Terms Master Functions
+export const getPaymentTermsMaster = () => {
+  const terms = getFromStorage(STORAGE_KEYS.PAYMENT_TERMS_MASTER) || [];
+  if (terms.length < 1) {
+    const defaultTerms = [
+      '15 Days Credit', '30 Days Credit', '45 Days Credit', '60 Days Credit', '90 Days Credit',
+      'Net 30', '10% Advance', '50% Advance', '100% Advance', 'Cash on Delivery',
+      'Credit Limit 50k', 'Special Discount 2%', 'Partial Advance', 'Standard terms'
+    ];
+    const dummyTerms = defaultTerms.map((name, i) => ({
+      id: `PT-${Date.now()}-${i}`,
+      timestamp: new Date().toISOString(),
+      ptNo: `PT-${String(i + 1).padStart(3, '0')}`,
+      name: name
+    }));
+    saveToStorage(STORAGE_KEYS.PAYMENT_TERMS_MASTER, dummyTerms);
+    return dummyTerms;
+  }
+  return terms;
+};
+export const savePaymentTermsMaster = (data) => saveToStorage(STORAGE_KEYS.PAYMENT_TERMS_MASTER, data);
+export const savePaymentTermMaster = (item) => {
+  const data = getPaymentTermsMaster();
+  data.push(item);
+  savePaymentTermsMaster(data);
 };
 
 // Transporter Agency Functions

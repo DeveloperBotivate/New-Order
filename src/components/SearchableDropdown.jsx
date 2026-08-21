@@ -68,8 +68,8 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
         onClick={handleToggle}
         className="w-full bg-white border border-gray-300 rounded px-2 py-1 flex justify-between items-center cursor-pointer hover:border-indigo-500 transition-all h-[30px] md:h-[34px] shadow-sm group outline-none focus:ring-1 focus:ring-indigo-500/30 active:scale-[0.98]"
       >
-        <span className={`text-[11px] md:text-[13px] truncate ${selectedOption ? 'text-gray-900' : 'text-gray-400'}`}>
-          {selectedOption ? selectedOption.label : placeholder}
+        <span className={`text-[11px] md:text-[13px] truncate ${selectedOption || value ? 'text-gray-900' : 'text-gray-400'}`}>
+          {selectedOption ? selectedOption.label : (value || placeholder)}
         </span>
         <ChevronDown
           size={14}
@@ -133,14 +133,16 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onAdd();
+                onAdd(searchTerm);
                 setIsOpen(false);
+                setSearchTerm("");
               }}
               onTouchStart={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onAdd();
+                onAdd(searchTerm);
                 setIsOpen(false);
+                setSearchTerm("");
               }}
               className="w-full border-t border-gray-100 px-3 py-2 text-indigo-600 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 bg-white active:bg-indigo-100"
             >

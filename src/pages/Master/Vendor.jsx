@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MapPin, Edit, Trash2, Plus, Minus } from 'lucide-react';
-import { getVendors, saveVendors, saveVendor } from '../../utils/storageManager';
+import { MapPin, Edit, Trash2, X } from 'lucide-react';
+import { getVendors, saveVendors, saveVendor, getPaymentTermsMaster } from '../../utils/storageManager';
 import { generateId } from '../../utils/helpers';
 import DataTable from '../../components/DataTable';
 import ModalAlert from '../../components/ModalAlert';
 import ModalForm from '../../components/ModalForm';
 import InfoPopover from '../../components/InfoPopover';
+import SearchableDropdown from '../../components/SearchableDropdown';
 
 export default function Vendor({ searchQuery, triggerAdd }) {
   const [vendors, setVendors] = useState([]);
@@ -13,12 +14,13 @@ export default function Vendor({ searchQuery, triggerAdd }) {
   const [editingId, setEditingId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
-  
+  const [paymentTermOptions, setPaymentTermOptions] = useState([]);
+
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, type: 'success', title: '', message: '', onConfirm: () => {} });
 
   const [formData, setFormData] = useState({
     name: '', gst: '', email: '', phone: '', address: '', locationLink: '', responsiblePerson: '',
-    paymentTerms: ['', '']
+    paymentTerms: []
   });
 
   const headers = [
@@ -29,6 +31,7 @@ export default function Vendor({ searchQuery, triggerAdd }) {
 
   useEffect(() => {
     setVendors(getVendors());
+    setPaymentTermOptions(getPaymentTermsMaster());
   }, []);
 
   useEffect(() => {
@@ -55,25 +58,22 @@ export default function Vendor({ searchQuery, triggerAdd }) {
 
   const handleAdd = () => {
     setEditingId(null);
-    setFormData({ name: '', gst: '', email: '', phone: '', address: '', locationLink: '', responsiblePerson: '', paymentTerms: ['', ''] });
+    setFormData({ name: '', gst: '', email: '', phone: '', address: '', locationLink: '', responsiblePerson: '', paymentTerms: [] });
     setShowModal(true);
   };
 
   const handleEdit = (vendor) => {
     setEditingId(vendor.id);
-    setFormData({ ...vendor, paymentTerms: vendor.paymentTerms && vendor.paymentTerms.length > 0 ? vendor.paymentTerms : ['', ''] });
+    setFormData({ ...vendor, paymentTerms: vendor.paymentTerms || [] });
     setShowModal(true);
   };
 
-  const handleAddTerm = () => setFormData({ ...formData, paymentTerms: [...formData.paymentTerms, ''] });
-  const handleRemoveTerm = (index) => {
-    const updated = formData.paymentTerms.filter((_, i) => i !== index);
-    setFormData({ ...formData, paymentTerms: updated.length > 0 ? updated : [''] });
+  const handleAddTerm = (term) => {
+    if (!term || formData.paymentTerms.includes(term)) return;
+    setFormData({ ...formData, paymentTerms: [...formData.paymentTerms, term] });
   };
-  const handleTermChange = (index, value) => {
-    const updated = [...formData.paymentTerms];
-    updated[index] = value;
-    setFormData({ ...formData, paymentTerms: updated });
+  const handleRemoveTerm = (index) => {
+    setFormData({ ...formData, paymentTerms: formData.paymentTerms.filter((_, i) => i !== index) });
   };
 
   const showAlert = (type, title, message, onConfirm = () => {}) => {
@@ -230,21 +230,25 @@ export default function Vendor({ searchQuery, triggerAdd }) {
 
         <div className="space-y-1.5 pt-2 border-t border-gray-50">
           <label className="block text-[10px] md:text-[12px] font-medium text-gray-700 uppercase tracking-tight">Payment Terms</label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5">
-            {formData.paymentTerms.map((term, index) => (
-              <div key={index} className="flex gap-2 items-center">
-                <input type="text" value={term} onChange={(e) => handleTermChange(index, e.target.value)} className="flex-1 border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]" placeholder={`Term ${index + 1}`} />
-                <button type="button" onClick={() => handleRemoveTerm(index)} className="text-red-400 hover:text-red-600 transition-all">
-                  <Minus size={16}/>
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end pt-1">
-            <button type="button" onClick={handleAddTerm} className="flex items-center gap-1.5 text-[10px] font-black bg-indigo-600 text-white px-3 py-1.5 rounded shadow-sm hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-widest">
-              <Plus size={14}/> Add
-            </button>
-          </div>
+          {formData.paymentTerms.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {formData.paymentTerms.map((term, index) => (
+                <span key={index} className="flex items-center gap-1 pl-2 pr-1 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded border border-indigo-100 uppercase">
+                  {term}
+                  <button type="button" onClick={() => handleRemoveTerm(index)} className="text-indigo-400 hover:text-red-500 transition-colors">
+                    <X size={12}/>
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <SearchableDropdown
+            options={paymentTermOptions.filter(t => !formData.paymentTerms.includes(t.name)).map(t => ({ value: t.name, label: t.name }))}
+            value=""
+            onChange={handleAddTerm}
+            placeholder="+ Add Payment Term"
+            className="h-[30px] md:h-[34px]"
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-gray-50">

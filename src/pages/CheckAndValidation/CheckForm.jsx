@@ -1,13 +1,86 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ShieldCheck, ArrowRightCircle } from 'lucide-react';
-import { updateReceivedOrder, getCheckedProductNumbers } from '../../utils/storageManager';
+import { X, ShieldCheck, ArrowRightCircle, Eye, Upload, FileText, AlertTriangle } from 'lucide-react';
+import {
+  updateReceivedOrder, getCheckedProductNumbers, getReceivedOrders,
+  getPaymentHistory, getInvoiceHistory, getConfirmDeliveryHistory, getLogisticHistory
+} from '../../utils/storageManager';
+import { compressImageFile, validateAttachmentFile, isPdfDataUrl, ATTACHMENT_ACCEPT } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
 export default function CheckForm({ order, onClose, onSuccess, isReadOnly = false }) {
-  const allSavedConditionsChecked = order.validationChecklist?.catalogPricing && 
-                                    order.validationChecklist?.gstCompliance && 
-                                    order.validationChecklist?.transportationType;
+  // Party's outstanding balance across their OTHER orders — same math as the
+  // Advance / Vendor / Freight Pending tabs, aggregated per party so the validator
+  // can see this party's overall payment exposure before approving a new PO.
+  const partyPendingBalance = useMemo(() => {
+    const allOrders = getReceivedOrders() || [];
+    const paymentHistory = getPaymentHistory() || [];
+    const invoiceHistory = getInvoiceHistory() || [];
+    const confirmHistory = getConfirmDeliveryHistory() || [];
+    const logisticRecords = getLogisticHistory() || [];
+
+    const partyOrders = allOrders.filter(o => o.partyName === order.partyName && o.orderId !== order.orderId);
+
+    let advance = 0;
+    partyOrders.forEach(o => {
+      if (o.advancePayment !== 'Yes') return;
+      const paid = paymentHistory
+        .filter(p => p.orderId === o.orderId && p.paymentType === 'Advance')
+        .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+      const required = parseFloat(o.advanceAmount || 0);
+      if (paid < required) advance += (required - paid);
+    });
+
+    let vendor = 0;
+    partyOrders.forEach(o => {
+      const orderInvoices = invoiceHistory.filter(inv => inv.orderId === o.orderId);
+      const seen = new Set();
+      const uniqueAmounts = [];
+      orderInvoices.forEach(inv => {
+        if (inv.invoiceNumber && !seen.has(inv.invoiceNumber)) {
+          seen.add(inv.invoiceNumber);
+          uniqueAmounts.push(parseFloat(inv.invoiceAmount || 0));
+        }
+      });
+      const totalInvoicedValue = uniqueAmounts.reduce((sum, v) => sum + v, 0);
+      const effectivePOValue = totalInvoicedValue > 0 ? totalInvoicedValue : parseFloat(o.totalPOValue || 0);
+
+      const orderFullyDelivered = orderInvoices.length > 0 && orderInvoices.every(invoiceItem => {
+        const cd = confirmHistory.find(ch => ch.dispatchId === invoiceItem.dispatchId);
+        return cd && cd.deliveryStatus === 'Delivered';
+      });
+      if (!orderFullyDelivered) return;
+
+      const vendorPaid = paymentHistory
+        .filter(p => p.orderId === o.orderId && p.paymentType === 'Vendor')
+        .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+
+      const remaining = effectivePOValue - vendorPaid;
+      if (remaining > 0) vendor += remaining;
+    });
+
+    let freight = 0;
+    const partyOrderIds = new Set(partyOrders.map(o => o.orderId));
+    const seenFreightOrders = new Set();
+    logisticRecords.forEach(record => {
+      if (!partyOrderIds.has(record.orderId) || seenFreightOrders.has(record.orderId)) return;
+      seenFreightOrders.add(record.orderId);
+      const itemsForOrder = logisticRecords.filter(r => r.orderId === record.orderId);
+      const totalFreightExpected = itemsForOrder.reduce((sum, r) => sum + parseFloat(r.transporterAmount || 0), 0);
+      const totalFreightPaid = paymentHistory
+        .filter(p => p.orderId === record.orderId && p.paymentType === 'Freight')
+        .reduce((sum, p) => sum + parseFloat(p.amountPaid || 0), 0);
+      const pending = totalFreightExpected - totalFreightPaid;
+      if (totalFreightExpected > 0 && pending > 0) freight += pending;
+    });
+
+    return { advance, vendor, freight };
+  }, [order.partyName, order.orderId]);
+
+  const allSavedConditionsChecked = order.validationChecklist?.catalogPricing &&
+                                    order.validationChecklist?.gstCompliance &&
+                                    order.validationChecklist?.transportationType &&
+                                    order.validationChecklist?.paymentTerms;
 
   // In History (isReadOnly), always show saved checklist.
   // In Pending, only prefill if the saved checklist is partially filled.
@@ -18,8 +91,26 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
     catalogPricing: shouldPrefill ? (order.validationChecklist?.catalogPricing || false) : false,
     gstCompliance: shouldPrefill ? (order.validationChecklist?.gstCompliance || false) : false,
     transportationType: shouldPrefill ? (order.validationChecklist?.transportationType || false) : false,
+    paymentTerms: shouldPrefill ? (order.validationChecklist?.paymentTerms || false) : false,
     remarks: shouldPrefill ? (order.validationChecklist?.remarks || '') : ''
   });
+
+  const [poImage, setPoImage] = useState(order.poImage || '');
+  const [showImageModal, setShowImageModal] = useState(false);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const sizeError = validateAttachmentFile(file);
+    if (sizeError) return toast.error(sizeError);
+    try {
+      const base64 = await compressImageFile(file);
+      setPoImage(base64);
+      toast.success('PO file replaced. Click Save to confirm.');
+    } catch {
+      toast.error('Error reading file');
+    }
+  };
 
   // Product numbers that have already been moved on to Check For Delivery in a previous pass
   const movedProductNumbers = new Set(getCheckedProductNumbers(order));
@@ -55,7 +146,7 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
     }
   };
 
-  const allConditionsChecked = checklist.catalogPricing && checklist.gstCompliance && checklist.transportationType;
+  const allConditionsChecked = checklist.catalogPricing && checklist.gstCompliance && checklist.transportationType && checklist.paymentTerms;
 
   const handleSave = () => {
     const selectedList = Array.from(selected);
@@ -64,6 +155,7 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
       // If they haven't checked all boxes, save checklist progress anyway, but don't move products.
       const updatedOrder = {
         ...order,
+        poImage,
         validationChecklist: checklist
       };
       updateReceivedOrder(updatedOrder);
@@ -76,6 +168,7 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
       // Just save checklist progress
       const updatedOrder = {
         ...order,
+        poImage,
         validationChecklist: checklist
       };
       updateReceivedOrder(updatedOrder);
@@ -89,6 +182,7 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
 
     const updatedOrder = {
       ...order,
+      poImage,
       isChecked: isFullyChecked,
       checkedProductNumbers,
       validationChecklist: checklist,
@@ -105,6 +199,7 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
   };
 
   return createPortal(
+    <>
     <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center z-[100] p-2 sm:p-6 overflow-y-auto" onClick={onClose}>
       <div
         className="bg-white rounded-2xl w-full max-w-4xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 my-auto"
@@ -155,6 +250,10 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
                 <p className="text-sm font-bold text-gray-900">{order.partyName}</p>
               </div>
               <div>
+                <p className="text-[10px] text-gray-500 font-medium">Payment Terms</p>
+                <p className="text-sm font-bold text-gray-900">{order.paymentTerm || '-'}</p>
+              </div>
+              <div>
                 <p className="text-[10px] text-gray-500 font-medium">GST Number</p>
                 <p className="text-sm font-bold text-gray-900">{order.gstNumber || '-'}</p>
               </div>
@@ -165,6 +264,65 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
               <div>
                 <p className="text-[10px] text-gray-500 font-medium">Transporter Type</p>
                 <p className="text-sm font-bold text-gray-900">{order.transportingType || '-'}</p>
+              </div>
+            </div>
+
+            {/* PO Attachment */}
+            <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => poImage && setShowImageModal(true)}
+                  className="w-14 h-14 rounded-lg border border-gray-200 bg-white overflow-hidden flex items-center justify-center shrink-0 disabled:cursor-default"
+                  disabled={!poImage}
+                >
+                  {poImage ? (
+                    isPdfDataUrl(poImage) ? (
+                      <FileText size={22} className="text-indigo-400" />
+                    ) : (
+                      <img src={poImage} alt="PO Attachment" className="w-full h-full object-cover" />
+                    )
+                  ) : (
+                    <FileText size={22} className="text-gray-300" />
+                  )}
+                </button>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-medium">PO Image / File</p>
+                  {poImage ? (
+                    <button type="button" onClick={() => setShowImageModal(true)} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                      <Eye size={14} /> View Attachment
+                    </button>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic">No file attached</p>
+                  )}
+                </div>
+              </div>
+              {!isReadOnly && (
+                <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-indigo-300 rounded-lg text-indigo-600 text-xs font-bold cursor-pointer hover:bg-indigo-50 transition-colors shrink-0">
+                  <Upload size={14} /> {poImage ? 'Change File' : 'Upload File'}
+                  <input type="file" className="hidden" accept={ATTACHMENT_ACCEPT} onChange={handleFileChange} />
+                </label>
+              )}
+            </div>
+          </div>
+
+          {/* Party's Pending Balance — across this party's other orders */}
+          <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-4">
+            <h3 className="text-[10px] uppercase font-bold text-amber-600 mb-3 tracking-wider flex items-center gap-1.5">
+              <AlertTriangle size={12} /> {order.partyName}'s Pending Balance (Other Orders)
+            </h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <p className="text-[10px] text-gray-500 font-medium">Pending Advance</p>
+                <p className={`text-sm font-bold ${partyPendingBalance.advance > 0 ? 'text-red-600' : 'text-gray-900'}`}>₹{partyPendingBalance.advance.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-500 font-medium">Pending Vendor</p>
+                <p className={`text-sm font-bold ${partyPendingBalance.vendor > 0 ? 'text-red-600' : 'text-gray-900'}`}>₹{partyPendingBalance.vendor.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-500 font-medium">Pending Freight</p>
+                <p className={`text-sm font-bold ${partyPendingBalance.freight > 0 ? 'text-red-600' : 'text-gray-900'}`}>₹{partyPendingBalance.freight.toFixed(2)}</p>
               </div>
             </div>
           </div>
@@ -295,6 +453,17 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
                 <span className={`text-sm font-medium ${checklist.transportationType ? 'text-indigo-900' : 'text-gray-700'}`}>Transportation Type Validated</span>
               </label>
 
+              <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${checklist.paymentTerms ? 'border-indigo-500 bg-indigo-50/30' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  checked={checklist.paymentTerms}
+                  onChange={(e) => !isReadOnly && setChecklist({...checklist, paymentTerms: e.target.checked})}
+                  disabled={isReadOnly}
+                />
+                <span className={`text-sm font-medium ${checklist.paymentTerms ? 'text-indigo-900' : 'text-gray-700'}`}>Payment Terms Compliance</span>
+              </label>
+
               {/* Remarks Field */}
               <div className="pt-2">
                 <label className="block text-[11px] font-bold text-gray-700 mb-1 uppercase tracking-wider">Remarks</label>
@@ -332,7 +501,33 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
           )}
         </div>
       </div>
-    </div>,
+    </div>
+
+    {showImageModal && (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4" onClick={() => setShowImageModal(false)}>
+        <div className="bg-white rounded-2xl max-w-3xl w-full p-2 relative shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={() => setShowImageModal(false)}
+            className="absolute -top-3 -right-3 bg-white text-gray-800 rounded-full p-1.5 shadow-lg hover:bg-gray-100 transition-colors z-10 border border-gray-200"
+          >
+            <X size={20} />
+          </button>
+          <div className="overflow-auto max-h-[85vh] rounded-xl">
+            {isPdfDataUrl(poImage) ? (
+              <iframe src={poImage} title="PDF Preview" className="w-full h-[80vh] rounded-xl bg-white" />
+            ) : poImage.startsWith('data:image/') ? (
+              <img src={poImage} alt="PO Attachment" className="w-full h-auto" />
+            ) : (
+              <div className="p-10 text-center">
+                <FileText size={48} className="mx-auto text-indigo-200 mb-4" />
+                <p className="text-gray-600">Document Preview Not Available</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>,
     document.body
   );
 }

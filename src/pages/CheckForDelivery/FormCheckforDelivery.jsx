@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, CheckCircle, Package } from 'lucide-react';
-import { saveDeliveryTransaction, getDeliveryHistory, getCheckedProductNumbers } from '../../utils/storageManager';
+import { saveDeliveryTransaction, getDeliveryHistory, getCheckedProductNumbers, getIMSStock } from '../../utils/storageManager';
 import toast from 'react-hot-toast';
 
 export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
@@ -17,12 +17,18 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
       const itemPendingQty = (parseFloat(item.qty) || 0) - itemApproveQty;
       const notYetValidated = !checkedProductNumbers.includes(productNumber);
 
+      // Live IMS stock suggests a starting Approve Qty — if it can't cover the
+      // full pending qty, Approve Qty comes up short of Qty right away and the
+      // Production Qty column picks up the difference automatically.
+      const availableStock = getIMSStock(item.productName) ?? 0;
+      const suggestedApproveQty = Math.max(0, Math.min(availableStock, itemPendingQty));
+
       return {
         ...item,
         productNumber,
-        stockStatus: '', // 'In Stock' | 'No Stock'
-        availableStock: Math.floor(Math.random() * 500) + 100, // Dummy initial stock
-        approveQty: '',
+        availableStock,
+        stockStatus: suggestedApproveQty > 0 ? 'In Stock' : 'No Stock', // 'In Stock' | 'No Stock'
+        approveQty: suggestedApproveQty > 0 ? String(suggestedApproveQty) : '',
         batchNo: '',
         remarks: '',
         _approvedQty: itemApproveQty,
@@ -38,6 +44,16 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
   // the previous "process everything shown" behavior.
   const [selected, setSelected] = useState(() => new Set(items.map(i => i.productNumber)));
   const allSelected = items.length > 0 && items.every(i => selected.has(i.productNumber));
+
+  // A product's Production Qty is whatever's left of its pending qty once
+  // Approve Qty is accounted for — live, so it updates as the qty is edited.
+  // It's 0 (hidden) once Approve Qty catches up to Qty, or if nothing's entered
+  // yet doesn't apply (stays at full pending qty until Approve Qty is typed).
+  const getProductionQty = (item) => {
+    const approveQty = parseFloat(item.approveQty) || 0;
+    return Math.max(0, (item._pendingQty || 0) - approveQty);
+  };
+  const productionSplitCount = items.filter(i => getProductionQty(i) > 0).length;
 
   const toggleSelect = (productNumber) => {
     const next = new Set(selected);
@@ -88,22 +104,71 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
       }
     }
 
-    // Attach order context to each delivered item
-    const deliveryItems = itemsToSave.map(item => ({
-      ...item,
-      orderId: order.orderId,
-      division: order.division,
-      poNumber: order.poNumber,
-      poDate: order.poDate,
-      partyName: order.partyName,
-      expectedDeliveryDate: order.expectedDeliveryDate,
-    }));
+    // Attach order context to each delivered item. An "In Stock" row whose
+    // Approve Qty falls short of Qty also gets a matching "No Stock" row for
+    // the shortfall, so that portion flows straight into Production Planning
+    // in the same save — no separate action needed.
+    //
+    // Production Planning has no separate "amount needed" field for a "No Stock"
+    // record — it reads that record's own `qty` as the amount to produce. So
+    // every "No Stock" record pushed here must carry the actual outstanding
+    // qty being routed to production, not the order line's full original qty
+    // (which would overstate it on a second/partial visit, or on a split where
+    // part already went to Dispatch).
+    const buildProductionValue = (qty, priceRate, gstPercent) => {
+      const basic = qty * (parseFloat(priceRate) || 0);
+      return basic + basic * ((parseFloat(gstPercent) || 0) / 100);
+    };
+
+    const deliveryItems = [];
+    itemsToSave.forEach(({ _approvedQty, _pendingQty, ...item }) => {
+      const context = {
+        orderId: order.orderId,
+        division: order.division,
+        poNumber: order.poNumber,
+        poDate: order.poDate,
+        partyName: order.partyName,
+        expectedDeliveryDate: order.expectedDeliveryDate,
+      };
+
+      if (item.stockStatus === 'No Stock') {
+        // Whole remaining pending qty on this line needs producing.
+        deliveryItems.push({
+          ...item,
+          ...context,
+          qty: _pendingQty,
+          totalValue: buildProductionValue(_pendingQty, item.priceRate, item.gstPercent)
+        });
+        return;
+      }
+
+      // In Stock — qty here stays the order line's original qty for context
+      // (Dispatch Planning uses Approve Qty, not Qty, as the dispatchable amount).
+      deliveryItems.push({ ...item, ...context });
+
+      const productionQty = Math.max(0, (_pendingQty || 0) - (parseFloat(item.approveQty) || 0));
+      if (productionQty > 0) {
+        deliveryItems.push({
+          ...item,
+          ...context,
+          qty: productionQty,
+          totalValue: buildProductionValue(productionQty, item.priceRate, item.gstPercent),
+          stockStatus: 'No Stock',
+          approveQty: '',
+          batchNo: '',
+          remarks: `Auto-routed to Production — shortfall of ${productionQty} ${item.uom || ''}`
+        });
+      }
+    });
 
     saveDeliveryTransaction(deliveryItems);
+    const anySplit = itemsToSave.some(item => item.stockStatus === 'In Stock' && getProductionQty(item) > 0);
     toast.success(
-      itemsToSave.length < items.length
-        ? `${itemsToSave.length} item(s) saved. Remaining items stay pending.`
-        : 'Delivery Check Saved!'
+      anySplit
+        ? 'Delivery Check Saved! Approved qty sent to Dispatch Planning, the shortfall to Production Planning.'
+        : itemsToSave.length < items.length
+          ? `${itemsToSave.length} item(s) saved. Remaining items stay pending.`
+          : 'Delivery Check Saved!'
     );
     if (onSuccess) onSuccess();
   };
@@ -185,8 +250,16 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
                 {selected.size}/{items.length} selected
               </span>
             </div>
+
+            {productionSplitCount > 0 && (
+              <div className="mb-3 flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium px-3 py-2 rounded-lg">
+                <Package size={14} className="shrink-0" />
+                {productionSplitCount} product{productionSplitCount > 1 ? 's' : ''} short of full Approve Qty — the shortfall will be sent to Production Planning on save.
+              </div>
+            )}
+
             <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto shadow-sm">
-              <table className="w-full text-left border-collapse min-w-[1300px]">
+              <table className="w-full text-left border-collapse min-w-[1450px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500 uppercase tracking-wider">
                     <th className="px-3 py-3 font-bold text-center w-10">
@@ -202,6 +275,7 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
                     <th className="px-3 py-3 font-bold whitespace-nowrap">Product Name</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Qty</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">UOM</th>
+                    <th className="px-3 py-3 font-bold text-center whitespace-nowrap">IMS Stock</th>
                     <th className="px-3 py-3 font-bold text-right whitespace-nowrap">Price/Rate</th>
                     <th className="px-3 py-3 font-bold text-right whitespace-nowrap">Total Price</th>
                     <th className="px-3 py-3 font-bold text-right whitespace-nowrap">GST %</th>
@@ -209,6 +283,7 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
                     <th className="px-3 py-3 font-bold text-right text-indigo-600 whitespace-nowrap">Grand Total</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Stock Status</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Approve Qty</th>
+                    <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Production Qty</th>
                     <th className="px-3 py-3 font-bold text-center whitespace-nowrap">Batch No.</th>
                     <th className="px-3 py-3 font-bold whitespace-nowrap">Remarks</th>
                   </tr>
@@ -221,9 +296,10 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
                     const grandTotal = basic + gstValue;
 
                     const isSelected = selected.has(prod.productNumber);
+                    const productionQty = getProductionQty(prod);
 
                     return (
-                      <tr key={idx} className={`hover:bg-gray-50/50 ${isSelected ? '' : 'opacity-50'}`}>
+                      <tr key={prod.productNumber} className={`hover:bg-gray-50/50 ${isSelected ? '' : 'opacity-50'}`}>
                         <td className="px-3 py-3 text-center align-top">
                           <input
                             type="checkbox"
@@ -236,6 +312,7 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
                         <td className="px-3 py-3 text-xs text-gray-800 font-medium align-top">{prod.productName}</td>
                         <td className="px-3 py-3 text-xs text-gray-700 text-center align-top font-bold bg-gray-50">{prod.qty}</td>
                         <td className="px-3 py-3 text-xs text-gray-500 text-center align-top"><span className="bg-gray-100 px-2 py-0.5 rounded">{prod.uom}</span></td>
+                        <td className="px-3 py-3 text-xs text-center align-top font-bold">{prod.availableStock}</td>
                         <td className="px-3 py-3 text-xs text-gray-700 text-right align-top font-medium">₹{parseFloat(prod.priceRate || 0).toFixed(2)}</td>
                         <td className="px-3 py-3 text-xs text-gray-700 text-right align-top font-medium">₹{basic.toFixed(2)}</td>
                         <td className="px-3 py-3 text-xs text-gray-700 text-right align-top">{gstPerc}%</td>
@@ -266,6 +343,17 @@ export default function FormCheckforDelivery({ order, onClose, onSuccess }) {
                             />
                           ) : (
                             <span className="text-gray-300 text-xs text-center block py-1.5">-</span>
+                          )}
+                        </td>
+
+                        {/* Production Qty — shows only while Approve Qty falls short of Qty */}
+                        <td className="px-3 py-2 align-top text-center">
+                          {productionQty > 0 ? (
+                            <span className="inline-block px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded text-xs font-bold">
+                              {productionQty}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">-</span>
                           )}
                         </td>
 

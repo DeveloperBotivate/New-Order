@@ -47,7 +47,7 @@ export default function PendingVendor({ data, filters, onSuccess }) {
     { label: "Action", className: "sticky left-0 bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     { label: "Order ID", className: "sticky left-[120px] bg-gray-50 z-20 shadow-[1px_0_0_0_#e5e7eb] min-w-[120px]" },
     "Division", "PO Number", "PO Date", "Party Name", "Delivery Date", "Transport", "Total Product", 
-    "Invoice Value", "Advance Paid", "Vendor Paid", "Invoice Number", "Invoice Date", "PO Copy", "Invoice Copy",
+    "Invoice Value", "Advance Paid", "Receive Payment", "Invoice Number", "Invoice Date", "PO Copy", "Invoice Copy",
     { label: "Pending Balance", className: "sticky right-0 bg-gray-50 z-20 shadow-[-1px_0_0_0_#e5e7eb] min-w-[140px]" }
   ];
 
@@ -94,7 +94,7 @@ export default function PendingVendor({ data, filters, onSuccess }) {
         }}
         className="w-full bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors"
       >
-        <CreditCard size={16} /> Pay Vendor
+        <CreditCard size={16} /> Receive Payment
       </button>
     </div>
   );
@@ -109,7 +109,7 @@ export default function PendingVendor({ data, filters, onSuccess }) {
           }}
           className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors w-full shadow-sm"
         >
-          <CreditCard size={14} /> Pay Vendor
+          <CreditCard size={14} /> Receive Payment
         </button>
       </td>
       <td className="px-4 py-3 whitespace-nowrap sticky left-[120px] z-10 shadow-[1px_0_0_0_#e5e7eb] bg-white">
