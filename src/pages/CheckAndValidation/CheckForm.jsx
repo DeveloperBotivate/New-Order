@@ -9,9 +9,10 @@ import { compressImageFile, validateAttachmentFile, isPdfDataUrl, ATTACHMENT_ACC
 import toast from 'react-hot-toast';
 
 export default function CheckForm({ order, onClose, onSuccess, isReadOnly = false }) {
-  // Party's outstanding balance across their OTHER orders — same math as the
-  // Advance / Vendor / Freight Pending tabs, aggregated per party so the validator
-  // can see this party's overall payment exposure before approving a new PO.
+  // Party's outstanding balance across ALL their orders — this one included —
+  // same math as the Advance / Vendor / Freight Pending tabs, aggregated per
+  // party so the validator can see this party's full payment exposure,
+  // combining past orders with whatever this current PO still owes.
   const partyPendingBalance = useMemo(() => {
     const allOrders = getReceivedOrders() || [];
     const paymentHistory = getPaymentHistory() || [];
@@ -19,7 +20,7 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
     const confirmHistory = getConfirmDeliveryHistory() || [];
     const logisticRecords = getLogisticHistory() || [];
 
-    const partyOrders = allOrders.filter(o => o.partyName === order.partyName && o.orderId !== order.orderId);
+    const partyOrders = allOrders.filter(o => o.partyName === order.partyName);
 
     let advance = 0;
     partyOrders.forEach(o => {
@@ -120,11 +121,17 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
     productNumber: `${order.orderId}-${String(idx + 1).padStart(2, '0')}`
   }));
 
-  // Nothing is pre-selected — the user picks which pending product(s) they're
-  // actually validating right now. Auto-selecting everything meant reopening the
-  // form after a partial save (checklist saved, nothing moved yet) would show
-  // every remaining product re-checked, not just the one originally chosen.
-  const [selected, setSelected] = useState(() => new Set());
+  // Nothing is pre-selected by default — the user picks which pending product(s)
+  // they're actually validating right now (auto-selecting everything would show
+  // every remaining product re-checked, not just the one originally chosen).
+  // Exception: if they'd already picked specific products on an earlier visit and
+  // saved with the checklist still incomplete, restore exactly that selection —
+  // same "prefill while incomplete" rule the checklist boxes themselves follow.
+  const [selected, setSelected] = useState(() => {
+    if (!shouldPrefill) return new Set();
+    const savedSelection = order.validationChecklist?.selectedProducts || [];
+    return new Set(savedSelection.filter(pn => !movedProductNumbers.has(pn)));
+  });
 
   const pendingItems = productItems.filter(p => !movedProductNumbers.has(p.productNumber));
   const allPendingSelected = pendingItems.length > 0 && pendingItems.every(p => selected.has(p.productNumber));
@@ -152,11 +159,13 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
     const selectedList = Array.from(selected);
 
     if (!allConditionsChecked) {
-      // If they haven't checked all boxes, save checklist progress anyway, but don't move products.
+      // If they haven't checked all boxes, save checklist progress anyway, but don't
+      // move products. Remember which products they'd already picked too, so
+      // reopening this order shows the same selection instead of starting blank.
       const updatedOrder = {
         ...order,
         poImage,
-        validationChecklist: checklist
+        validationChecklist: { ...checklist, selectedProducts: selectedList }
       };
       updateReceivedOrder(updatedOrder);
       toast.success('Checklist progress saved. All 3 conditions must be met to move products.');
@@ -309,7 +318,7 @@ export default function CheckForm({ order, onClose, onSuccess, isReadOnly = fals
           {/* Party's Pending Balance — across this party's other orders */}
           <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-4">
             <h3 className="text-[10px] uppercase font-bold text-amber-600 mb-3 tracking-wider flex items-center gap-1.5">
-              <AlertTriangle size={12} /> {order.partyName}'s Pending Balance (Other Orders)
+              <AlertTriangle size={12} /> {order.partyName}'s Pending Balance (All Orders)
             </h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
